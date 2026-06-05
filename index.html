@@ -90,6 +90,24 @@
   .modal h2{margin-bottom:14px;color:var(--primary-dark)}
   .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 14px;font-size:14px;margin-bottom:14px}
   .kv .k{color:var(--muted);font-weight:600}
+  .modal-media{display:flex;flex-wrap:wrap;gap:10px}
+  .modal-media .mthumb{width:120px;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;
+    border:1px solid var(--line);position:relative;background:#000}
+  .modal-media .mthumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .modal-media .mthumb .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:30px;text-shadow:0 1px 4px #000;pointer-events:none}
+  .modal-media .mthumb .broken{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#cfe0d6;font-size:11px;text-align:center;padding:6px;background:#26302b}
+  .lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:120;
+    align-items:center;justify-content:center;padding:20px}
+  .lightbox.show{display:flex}
+  .lightbox img,.lightbox video{max-width:95vw;max-height:88vh;border-radius:8px;background:#000}
+  .lightbox iframe{width:92vw;height:84vh;border:0;border-radius:8px;background:#000}
+  .lightbox .lb-close{position:absolute;top:12px;right:18px;color:#fff;font-size:34px;cursor:pointer;
+    background:none;border:none;line-height:1;z-index:2}
+  .lightbox .lb-open{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+    background:rgba(255,255,255,.92);color:#26302b;padding:8px 16px;border-radius:20px;
+    font-size:13px;text-decoration:none;font-weight:600}
   .modal-media img,.modal-media video{max-width:100%;border-radius:8px;margin-bottom:10px}
   .close-x{float:right;cursor:pointer;font-size:22px;color:#999;border:none;background:none}
   .empty{text-align:center;color:var(--muted);padding:40px 0;font-size:14px}
@@ -185,6 +203,7 @@
         <div>
           <label>品名 <span class="req">*</span></label>
           <select id="f_name"></select>
+          <input type="text" id="f_name_other" placeholder="自行輸入品名" style="display:none;margin-top:8px">
         </div>
         <div>
           <label>料號（自動帶入，可修改）</label>
@@ -219,11 +238,9 @@
       <div class="full" style="margin-top:14px">
         <label>照片 / 影片（可多張，支援拍照與錄影）</label>
         <div class="uploader" id="dropZone">點此或拖曳上傳照片、影片　📷🎥<br><span style="font-size:11px">支援 jpg/png/mp4/mov，建議單檔 &lt; 15MB</span></div>
-        <input type="file" id="f_media" accept="image/*,video/*" multiple capture="environment" hidden>
+        <input type="file" id="f_media" accept="image/*,video/*" multiple hidden>
         <div class="media-grid" id="mediaPreview"></div>
       </div>
-
-      <div class="casebox" id="casePreview" style="margin-top:16px">案件編號：（填好門市與日期後自動產生）</div>
 
       <div class="btn-row">
         <button class="btn" id="submitBtn">送出回報並通知 LINE</button>
@@ -282,7 +299,12 @@
       <div class="pill-note">送出案件時，系統會把這裡的設定交給雲端後端代發 LINE（瀏覽器無法直接呼叫 LINE）。設定值會存在本機瀏覽器，請勿在公用電腦留存。</div>
       <div class="grid">
         <div class="full"><label>Channel access token（長期）<span style="font-weight:400;color:var(--muted)">　← 一長串英數字，非 32 碼的 Channel secret</span></label><input type="text" id="line_token" placeholder="LINE Developers → Messaging API → Channel access token (long-lived)"></div>
-        <div class="full"><label>推播目標 ID（使用者 userId 或群組 groupId，可多個用逗號分隔）</label><input type="text" id="line_to" placeholder="例：Uxxxxxxxx, Cxxxxxxxx"></div>
+        <div class="full"><label>推播目標 ID（使用者 userId 或群組 groupId，可多個用逗號分隔）<span style="font-weight:400;color:var(--muted)">　← 留空＝改用「廣播」發給所有加官方帳號好友的人</span></label><input type="text" id="line_to" placeholder="例：Uxxxxxxxx, Cxxxxxxxx（留空則廣播）"></div>
+        <div class="full"><label>「連結」要導向的網址（{link} 代入值）</label><input type="text" id="line_link" placeholder="案件清單網址"></div>
+        <div class="full"><label>通知內容範本</label>
+          <textarea id="line_tpl" style="min-height:200px;font-family:inherit"></textarea>
+          <div class="pill-note" style="margin-top:8px">可用代入欄位：<code>{caseNo}</code> 案件編號 · <code>{name}</code> 品名 · <code>{qty}</code> 異常數量 · <code>{mat}</code> 異常料號 · <code>{mfg}</code> 製造日期 · <code>{exp}</code> 有效日期 · <code>{date}</code> 異常日期 · <code>{desc}</code> 異常說明 · <code>{cls}</code> 異常分類 · <code>{store}</code> 門市 · <code>{link}</code> 連結。製造／有效日期沒填會自動留空。</div>
+        </div>
       </div>
       <div class="btn-row">
         <button class="btn" id="saveLine">儲存設定</button>
@@ -306,13 +328,35 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<!-- 放大檢視 lightbox -->
+<div class="lightbox" id="lightbox">
+  <button class="lb-close" onclick="closeLightbox()">×</button>
+  <div id="lightboxBody"></div>
+</div>
+
 <script>
 /* ====== 基礎資料 ====== */
 const STORES = ["三重正義","中和南勢角","中壢中原","中壢新生","中山南西","信義永吉","信義虎林","信義通化","內壢忠孝","南投復興","台中中科","台中勤美","台中北平","台中大甲","台中大里","台中東山","台中東海","台中豐原","台中逢甲","台中黎明","台北大安","台北大巨蛋","台北石牌","台北萬芳","台北西湖","台南東寧","台南民生","台南永康","嘉義文化","基隆廟口","士林捷運","宜蘭礁溪","彰化員林","彰化彰基","忠孝敦化","斗六中山","新店民權","新竹民生","新竹清大","新莊幸福","板橋中正","林口長庚","桃園中正","桃園藝文","楊梅大成","永和永安市場","汐止中興","站前南陽","竹北勝利","竹北博愛","羅東民權","苗栗頭份","蘆洲光華","高雄巨蛋","高雄瑞隆","高雄美麗島"];
-const PRODUCTS = {"22oz-90打凸A白底雙層杯":"M01030193","UG 22oz-90打凸A白底雙層杯":"M01030193","16oz-90打凸A白底雙層杯":"M01030195","UG 16oz-90打凸A白底雙層杯":"M01030195","PP-90注塑梅花分體蓋 白色":"M01020297","水蜜桃醬":"F04020086","稀釋版西柚糖漿":"F04020088","朱槿風味普洱紅茶":"F01010104","牛皮色紙漿二杯架":"M01010155","二杯架":"M01010155","牛皮色紙漿四杯架":"M01010156","UG 牛皮色紙漿四杯架":"M01010156","蜜燕麥":"F04040132","茉香綠茶":"F01010101","桂花烏龍":"F01010102","鐵觀音":"F01010103","金絲紅茶":"F01010108","糯米香風味綠茶":"F01010107","山茶風味紅烏龍（B)":"F01010112","UG鮮乳":"F07020048","櫻島家鮮奶":"F07020041","歐登堡動物性鮮奶油":"F07020042","冰伯朗":"F07020043","紅西柚果粒罐頭":"F04030108","原味果凍粉":"F03010256","台糖精製細砂":"F04010028","靜岡抹茶粉360":"F03010296","綠哈密瓜風味糖漿":"F04020087","桂花糖漿":"F04010069","冷凍檸檬原汁":"F04020101","UG杯膜":"M01020278","UG杯膜B":"DR12810001","單杯魔術貼不織布提袋":"M01040042","雙杯無紡布保溫袋":"M01040043","四杯魔術貼不織布保冷袋":"M01040057","Mosa氣彈8.5g":"M05010940","電子發票":"M08010023"};
+/* 品名主檔（料號相同者已去重，保留 UG 版本）。預設為內建清單，啟動後會以後端 products 主檔覆蓋；
+   日後改動只需編輯後端試算表的 products 分頁，全門市下拉即時同步。 */
+let PRODUCTS = {"UG 22oz-90打凸A白底雙層杯":"M01030193","UG 16oz-90打凸A白底雙層杯":"M01030195","PP-90注塑梅花分體蓋 白色":"M01020297","水蜜桃醬":"F04020086","稀釋版西柚糖漿":"F04020088","朱槿風味普洱紅茶":"F01010104","牛皮色紙漿二杯架":"M01010155","UG 牛皮色紙漿四杯架":"M01010156","蜜燕麥":"F04040132","茉香綠茶":"F01010101","桂花烏龍":"F01010102","鐵觀音":"F01010103","金絲紅茶":"F01010108","糯米香風味綠茶":"F01010107","山茶風味紅烏龍（B)":"F01010112","UG鮮乳":"F07020048","櫻島家鮮奶":"F07020041","歐登堡動物性鮮奶油":"F07020042","冰伯朗":"F07020043","紅西柚果粒罐頭":"F04030108","原味果凍粉":"F03010256","台糖精製細砂":"F04010028","靜岡抹茶粉360":"F03010296","綠哈密瓜風味糖漿":"F04020087","桂花糖漿":"F04010069","冷凍檸檬原汁":"F04020101","UG杯膜":"M01020278","UG杯膜B":"DR12810001","單杯魔術貼不織布提袋":"M01040042","雙杯無紡布保溫袋":"M01040043","四杯魔術貼不織布保冷袋":"M01040057","Mosa氣彈8.5g":"M05010940","電子發票":"M08010023"};
 const HANDLE_OPTS = ["門市報廢","轉回總部","廠商至門市回收","─"];
 const METHOD_OPTS = ["換貨","折讓","─"];
 const LS_KEY="store_anomaly_cases_v1", LS_LINE="store_anomaly_line_v1";
+const OTHER_OPT="__other__"; // 品名選單「其他（自行輸入）」的值
+const PUBLIC_SITE="https://johney8590-svg.github.io/store-anomaly-report-web/";
+/* LINE 通知預設範本（可在「LINE 通知設定」調整；可用代入欄位見設定頁說明） */
+const DEFAULT_LINE_TPL=
+  "【門市物料異常通知】\n"+
+  "案件編號：{caseNo}\n"+
+  "品名：{name}\n"+
+  "異常數量：{qty}\n"+
+  "異常料號：{mat}\n"+
+  "製造日期：{mfg}\n"+
+  "有效日期：{exp}\n"+
+  "異常日期：{date}\n"+
+  "異常說明：{desc}\n"+
+  "連結：{link}";
 
 /* ====== 後端 API（雲端）設定 ======
    部署 Apps Script Web App 後，把 /exec 網址與密鑰填到這裡。
@@ -352,13 +396,41 @@ async function syncFromCloud(){
 /* ====== 初始化下拉 ====== */
 function fillSelect(el,arr,ph){el.innerHTML="<option value=''>"+ (ph||"— 請選擇 —") +"</option>"+arr.map(s=>`<option>${s}</option>`).join("")}
 fillSelect(f_store,STORES,"— 選擇門市 —");
-fillSelect(f_name,Object.keys(PRODUCTS),"— 選擇品名 —");
+buildProductSelect();
 fillSelect(q_store,STORES,"全部門市"); q_store.value="";
 f_date.value = today();
 function today(){const d=new Date();return d.toISOString().slice(0,10)}
 
-f_name.addEventListener("change",()=>{f_mat.value=PRODUCTS[f_name.value]||""});
-[f_store,f_date].forEach(el=>el.addEventListener("change",updateCasePreview));
+/* 依目前 PRODUCTS 重建品名下拉，並在最後附上「其他（自行輸入）」 */
+function buildProductSelect(){
+  const keep=f_name.value;
+  f_name.innerHTML="<option value=''>— 選擇品名 —</option>"+
+    Object.keys(PRODUCTS).map(s=>`<option value="${s.replace(/"/g,'&quot;')}">${esc(s)}</option>`).join("")+
+    `<option value="${OTHER_OPT}">其他（自行輸入）</option>`;
+  if(keep && (PRODUCTS[keep]!==undefined || keep===OTHER_OPT)) f_name.value=keep;
+}
+/* 從後端品名主檔載入，覆蓋內建清單（離線時沿用內建） */
+async function loadProducts(){
+  if(!API_URL)return;
+  try{
+    const list=await api("products");
+    if(Array.isArray(list)&&list.length){
+      const obj={};list.forEach(p=>{if(p&&p.name)obj[String(p.name)]=String(p.mat||"")});
+      PRODUCTS=obj;buildProductSelect();
+    }
+  }catch(e){console.warn("品名主檔載入失敗，沿用內建清單",e);}
+}
+
+f_name.addEventListener("change",()=>{
+  if(f_name.value===OTHER_OPT){
+    f_name_other.style.display="";
+    f_mat.value="";f_mat.placeholder="自行輸入料號";
+    f_name_other.focus();
+  }else{
+    f_name_other.style.display="none";f_name_other.value="";
+    f_mat.value=PRODUCTS[f_name.value]||"";f_mat.placeholder="選品名後自動帶入";
+  }
+});
 
 function pad3(n){return String(n).padStart(3,"0")}
 function ymd(dstr){return dstr.replaceAll("-","")}
@@ -367,11 +439,8 @@ function genCaseNo(store,dstr){
   const n=cases.filter(c=>c.store===store && ymd(c.date)===base).length+1;
   return store+base+pad3(n);
 }
-function updateCasePreview(){
-  if(f_store.value && f_date.value){
-    casePreview.textContent="案件編號："+genCaseNo(f_store.value,f_date.value);
-  }else casePreview.textContent="案件編號：（填好門市與日期後自動產生）";
-}
+/* 案件編號改由後端自動生成，前端不再顯示預覽（保留函式給既有呼叫點）。 */
+function updateCasePreview(){}
 
 /* ====== 媒體上傳 ====== */
 dropZone.addEventListener("click",()=>f_media.click());
@@ -398,15 +467,17 @@ function delMedia(i){media.splice(i,1);renderMedia()}
 
 /* ====== 送出 ====== */
 submitBtn.addEventListener("click",async ()=>{
-  if(!f_store.value||!f_date.value||!f_name.value||!f_qty.value||!f_desc.value){
-    toast("請填寫所有必填欄位（*）");return;
+  const isOther=f_name.value===OTHER_OPT;
+  const nameVal=isOther?f_name_other.value.trim():f_name.value;
+  if(!f_store.value||!f_date.value||!nameVal||!f_qty.value||!f_desc.value){
+    toast(isOther&&!nameVal?"請輸入「其他」的品名":"請填寫所有必填欄位（*）");return;
   }
   if(f_mfg.value && f_exp.value && f_exp.value < f_mfg.value){
     toast("有效日期不可早於製造日期");return;
   }
   const caseNo=genCaseNo(f_store.value,f_date.value);
   const c={
-    caseNo,date:f_date.value,store:f_store.value,name:f_name.value,mat:f_mat.value,
+    caseNo,date:f_date.value,store:f_store.value,name:nameVal,mat:f_mat.value,
     mfg:f_mfg.value,exp:f_exp.value,qty:f_qty.value,cls:f_class.value,desc:f_desc.value,
     media:media.slice(),
     handle:"",method:"",result:"",
@@ -445,14 +516,22 @@ submitBtn.addEventListener("click",async ()=>{
 });
 resetBtn.addEventListener("click",resetForm);
 function resetForm(){
-  f_name.value="";f_mat.value="";f_mfg.value="";f_exp.value="";f_qty.value="";
+  f_name.value="";f_name_other.value="";f_name_other.style.display="none";
+  f_mat.value="";f_mat.placeholder="選品名後自動帶入";
+  f_mfg.value="";f_exp.value="";f_qty.value="";
   f_class.value="";f_desc.value="";media=[];renderMedia();f_date.value=today();
-  updateCasePreview();
 }
 
 /* ====== LINE 推播 ====== */
+function fillTpl(tpl,c,link){
+  const map={"{caseNo}":c.caseNo||"","{name}":c.name||"","{qty}":c.qty||"","{mat}":c.mat||"",
+    "{mfg}":c.mfg||"","{exp}":c.exp||"","{date}":c.date||"","{desc}":c.desc||"",
+    "{cls}":c.cls||"","{store}":c.store||"","{link}":link||""};
+  let s=String(tpl);Object.keys(map).forEach(k=>{s=s.split(k).join(map[k])});return s;
+}
 function buildMsg(c){
-  return `【門市物料異常通知】\n案件編號：${c.caseNo}\n門市：${c.store}\n日期：${c.date}\n品名：${c.name}（${c.mat||"無料號"}）\n異常數量：${c.qty}\n異常分類：${c.cls||"未分類"}\n狀況：${c.desc}\n附件：${c.media.length} 個照片/影片\n— 請指定對象登入系統處理 —`;
+  const cfg=getLineCfg();
+  return fillTpl(cfg.template||DEFAULT_LINE_TPL,c,cfg.link||PUBLIC_SITE);
 }
 function notifyLine(c){
   const cfg=getLineCfg();
@@ -502,10 +581,44 @@ function renderList(){
 }
 
 /* ====== 案件詳情 / 處理 ====== */
+/* 從媒體物件取得 Google Drive 檔案 id（相容舊資料：可從 url / view 解析） */
+function driveId(m){
+  if(m.id)return m.id;
+  const s=(m.url||"")+" "+(m.view||"");
+  const mt=s.match(/[?&]id=([\w-]+)/)||s.match(/\/d\/([\w-]+)/);
+  return mt?mt[1]:"";
+}
+/* 縮圖網址：雲端用 Drive thumbnail 端點（穩定可內嵌）；本機暫存用 dataURL */
+function mediaThumb(m,w){const id=driveId(m);return id?("https://drive.google.com/thumbnail?id="+id+"&sz=w"+(w||400)):(m.url||"");}
+function openLightbox(i){
+  const m=window.__lbMedia&&window.__lbMedia[i];if(!m)return;
+  const id=driveId(m);let inner;
+  if(m.type==="video"){
+    inner=id
+      ?`<iframe src="https://drive.google.com/file/d/${id}/preview" allow="autoplay"></iframe>`
+      :`<video src="${m.url}" controls autoplay></video>`;
+  }else{
+    const big=id?("https://drive.google.com/thumbnail?id="+id+"&sz=w1600"):m.url;
+    inner=`<img src="${big}">`;
+  }
+  if(m.view)inner+=`<a class="lb-open" href="${m.view}" target="_blank" rel="noopener">在 Google Drive 開啟原檔</a>`;
+  lightboxBody.innerHTML=inner;lightbox.classList.add("show");
+}
+function closeLightbox(){lightbox.classList.remove("show");lightboxBody.innerHTML="";}
+lightbox.addEventListener("click",e=>{if(e.target===lightbox)closeLightbox()});
+
 function openCase(idx){
   const c=cases[idx];
-  const mediaHtml=c.media.length?`<div class="modal-media">${c.media.map(m=>
-    m.type==="video"?`<video src="${m.url}" controls></video>`:`<img src="${m.url}">`).join("")}</div>`
+  window.__lbMedia=c.media||[];
+  const mediaHtml=c.media.length?`<div class="modal-media">${c.media.map((m,i)=>{
+    const t=mediaThumb(m,400);
+    const fallback=`this.style.display='none';this.parentNode.querySelector('.broken').style.display='flex'`;
+    return `<div class="mthumb" onclick="openLightbox(${i})" title="點擊放大">
+      <img src="${t}" loading="lazy" onerror="${fallback}">
+      <div class="broken" style="display:none">無法載入縮圖<br>點擊開啟</div>
+      ${m.type==="video"?'<span class="play">▶</span>':''}
+    </div>`;
+  }).join("")}</div>`
     :`<p style="color:var(--muted)">無附件</p>`;
   const adminFields=`
     <div class="grid" style="margin-top:6px">
@@ -607,9 +720,15 @@ exportBtn.addEventListener("click",()=>{
 });
 
 /* ====== LINE 設定 ====== */
-(function(){const c=getLineCfg();line_token.value=c.token||"";line_to.value=c.to||""})();
+(function(){const c=getLineCfg();
+  line_token.value=c.token||"";line_to.value=c.to||"";
+  line_link.value=c.link||PUBLIC_SITE;
+  line_tpl.value=(c.template!==undefined&&c.template!=="")?c.template:DEFAULT_LINE_TPL;
+})();
 saveLine.addEventListener("click",async ()=>{
-  const cfg={token:line_token.value.trim(),to:line_to.value.trim()};setLineCfg(cfg);
+  const cfg={token:line_token.value.trim(),to:line_to.value.trim(),
+    link:line_link.value.trim(),template:line_tpl.value};
+  setLineCfg(cfg);
   if(API_URL){
     saveLine.disabled=true;
     try{ await api("saveLine",{line:cfg}); toast("LINE 設定已儲存（雲端，全門市共用）"); }
@@ -620,7 +739,9 @@ saveLine.addEventListener("click",async ()=>{
   }
 });
 testLine.addEventListener("click",async ()=>{
-  const cfg={token:line_token.value.trim(),to:line_to.value.trim()};setLineCfg(cfg);
+  const cfg={token:line_token.value.trim(),to:line_to.value.trim(),
+    link:line_link.value.trim(),template:line_tpl.value};
+  setLineCfg(cfg);
   if(!cfg.token){toast("請先填寫 Channel access token");return;}
   if(API_URL){
     testLine.disabled=true;
@@ -702,7 +823,9 @@ function esc(s){return String(s||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
 function showModal(html){modalBox.innerHTML=html;modalBg.classList.add("show")}
 function closeModal(){modalBg.classList.remove("show")}
 modalBg.addEventListener("click",e=>{if(e.target===modalBg)closeModal()});
-document.addEventListener("keydown",e=>{if(e.key==="Escape"&&modalBg.classList.contains("show"))closeModal()});
+document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;
+  if(lightbox.classList.contains("show"))closeLightbox();
+  else if(modalBg.classList.contains("show"))closeModal();});
 let toastT;function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2600)}
 function refreshAll(){renderList();updateCasePreview();if(document.getElementById("view-dashboard").classList.contains("active"))renderDash()}
 
@@ -720,7 +843,8 @@ if(!cases.length){
   cases=demo;save();
 }
 applyRoleUI();
-updateCasePreview();renderList();
+renderList();
+loadProducts();
 syncFromCloud();
 </script>
 </body>
