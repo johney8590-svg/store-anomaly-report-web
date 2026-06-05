@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>門市物料異常回報系統</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --primary:#2c6e49; --primary-dark:#1e4d33; --accent:#d68c45;
+    --bg:#f4f6f5; --card:#ffffff; --line:#e2e6e4; --text:#26302b;
+    --muted:#6b7872; --danger:#c0392b; --warn:#e08e0b; --ok:#2c8a5a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI","Microsoft JhengHei","PingFang TC",sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.5;font-size:15px}
+  header{background:var(--primary);color:#fff;padding:14px 22px;display:flex;
+    align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  header h1{font-size:19px;font-weight:700}
+  header .sub{font-size:12px;opacity:.85;font-weight:400}
+  .role-switch{display:flex;background:rgba(255,255,255,.15);border-radius:8px;padding:3px}
+  .role-switch button{background:none;border:none;color:#fff;padding:7px 14px;
+    border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;opacity:.7}
+  .role-switch button.active{background:#fff;color:var(--primary);opacity:1}
+  nav{background:var(--primary-dark);display:flex;gap:2px;padding:0 14px;flex-wrap:wrap}
+  nav button{background:none;border:none;color:#cfe0d6;padding:12px 18px;cursor:pointer;
+    font-size:14px;font-weight:600;border-bottom:3px solid transparent}
+  nav button.active{color:#fff;border-bottom-color:var(--accent)}
+  main{max-width:1180px;margin:0 auto;padding:22px 18px 60px}
+  .view{display:none}.view.active{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:22px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .card h2{font-size:16px;margin-bottom:4px;color:var(--primary-dark)}
+  .card .hint{font-size:12px;color:var(--muted);margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+  label{display:block;font-size:13px;font-weight:600;margin-bottom:5px;color:#3a463f}
+  label .req{color:var(--danger)}
+  input,select,textarea{width:100%;padding:9px 11px;border:1px solid #cdd5d0;
+    border-radius:7px;font-size:14px;font-family:inherit;background:#fff}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary);
+    box-shadow:0 0 0 3px rgba(44,110,73,.12)}
+  input:disabled,select:disabled,textarea:disabled{background:#f0f2f1;color:#8a958f;cursor:not-allowed}
+  textarea{resize:vertical;min-height:60px}
+  .full{grid-column:1/-1}
+  .casebox{background:#eef5f0;border:1px dashed var(--primary);border-radius:8px;
+    padding:10px 14px;font-size:14px;color:var(--primary-dark);font-weight:700;letter-spacing:.5px}
+  .btn{background:var(--primary);color:#fff;border:none;padding:11px 22px;border-radius:8px;
+    font-size:14px;font-weight:600;cursor:pointer}
+  .btn:hover{background:var(--primary-dark)}
+  .btn.sec{background:#fff;color:var(--primary);border:1px solid var(--primary)}
+  .btn.line{background:#06c755}.btn.line:hover{background:#05a948}
+  .btn.sm{padding:6px 12px;font-size:12px}
+  .btn.ghost{background:#eef2f0;color:#445}
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .uploader{border:2px dashed #cdd5d0;border-radius:10px;padding:18px;text-align:center;
+    cursor:pointer;color:var(--muted);font-size:13px;background:#fafbfa}
+  .uploader:hover{border-color:var(--primary);color:var(--primary)}
+  .media-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+  .media-thumb{position:relative;width:90px;height:90px;border-radius:8px;overflow:hidden;
+    border:1px solid var(--line);background:#000}
+  .media-thumb img,.media-thumb video{width:100%;height:100%;object-fit:cover}
+  .media-thumb .del{position:absolute;top:2px;right:2px;background:rgba(192,57,43,.9);
+    color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:1}
+  .media-thumb .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:26px;pointer-events:none;text-shadow:0 1px 4px #000}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f2;color:#3a463f;font-weight:700;position:sticky;top:0;cursor:pointer;white-space:nowrap}
+  tr:hover td{background:#f8faf9}
+  .tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+  .tag.pend{background:#fdf0d5;color:#9a6700}
+  .tag.done{background:#d8f0e3;color:#1e6e44}
+  .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .stat .n{font-size:30px;font-weight:800;color:var(--primary)}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
+  .stat.warn .n{color:var(--warn)}.stat.danger .n{color:var(--danger)}
+  .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end}
+  .filter-bar>div{flex:1;min-width:140px}
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:760px){.chart-grid{grid-template-columns:1fr}}
+  .chart-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;min-height:300px}
+  .chart-box h3{font-size:14px;margin-bottom:12px;color:var(--primary-dark)}
+  .chart-canvas{position:relative;height:260px}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;
+    align-items:center;justify-content:center;padding:20px}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:90vh;
+    overflow:auto;padding:24px}
+  .modal h2{margin-bottom:14px;color:var(--primary-dark)}
+  .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 14px;font-size:14px;margin-bottom:14px}
+  .kv .k{color:var(--muted);font-weight:600}
+  .modal-media img,.modal-media video{max-width:100%;border-radius:8px;margin-bottom:10px}
+  .close-x{float:right;cursor:pointer;font-size:22px;color:#999;border:none;background:none}
+  .empty{text-align:center;color:var(--muted);padding:40px 0;font-size:14px}
+  .pill-note{background:#fff8ec;border:1px solid #f0dcb0;border-radius:8px;padding:12px 14px;
+    font-size:12.5px;color:#7a5c1e;margin-bottom:16px}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#26302b;
+    color:#fff;padding:12px 22px;border-radius:30px;font-size:14px;z-index:99;opacity:0;
+    transition:opacity .3s;pointer-events:none}
+  .toast.show{opacity:1}
+  code{background:#eef2f0;padding:1px 6px;border-radius:4px;font-size:12px}
+  .step{margin-bottom:14px;padding-left:30px;position:relative;font-size:13.5px}
+  .step .num{position:absolute;left:0;top:0;background:var(--primary);color:#fff;width:22px;
+    height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+  .scrollwrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:10px}
+
+  /* ===== 手機版優化（門市夥伴主要在手機操作）===== */
+  @media (max-width:600px){
+    body{font-size:16px}
+    header{padding:12px 14px;gap:12px}
+    header h1{font-size:17px}
+    header .sub{font-size:11px}
+    .role-switch{width:100%}
+    .role-switch button{flex:1;padding:11px 0;font-size:14px}
+    nav{padding:0 6px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+    nav button{padding:13px 16px;font-size:15px;white-space:nowrap}
+    main{padding:14px 12px 90px}
+    .card{padding:16px 14px;border-radius:14px}
+    .card h2{font-size:17px}
+    .grid{grid-template-columns:1fr;gap:15px}
+    label{font-size:14px;margin-bottom:7px}
+    /* 16px 可避免 iPhone 聚焦時自動放大；加大內距方便手指點按 */
+    input,select,textarea{font-size:16px;padding:13px 12px;border-radius:9px}
+    textarea{min-height:84px}
+    .btn{padding:15px 20px;font-size:16px;border-radius:11px;width:100%}
+    .btn.sm{width:auto;padding:9px 14px;font-size:14px}
+    .btn-row{flex-direction:column;gap:10px}
+    .casebox{font-size:15px;padding:13px 14px}
+    .uploader{padding:24px 14px;font-size:14px}
+    .media-thumb{width:80px;height:80px}
+    .media-thumb .del{width:26px;height:26px;font-size:15px}
+    .stat-row{grid-template-columns:1fr 1fr;gap:10px}
+    .stat{padding:14px}
+    .stat .n{font-size:26px}
+    .chart-grid{grid-template-columns:1fr}
+    .filter-bar{flex-direction:column;align-items:stretch;gap:12px}
+    .filter-bar>div{min-width:0}
+    .filter-bar .btn.sm{width:100%}
+    .scrollwrap{max-height:none}
+    table{font-size:13px}
+    th,td{padding:10px 8px}
+    .modal{padding:18px 16px;border-radius:14px;max-height:92vh}
+    .modal h2{font-size:18px}
+    .kv{grid-template-columns:84px 1fr;font-size:14px}
+    .toast{bottom:16px;left:12px;right:12px;transform:none;text-align:center}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>門市物料異常回報系統</h1>
+    <div class="sub">回報 · 處理 · LINE 通知 · 異常檢視儀表板</div>
+  </div>
+  <div class="role-switch" id="roleSwitch">
+    <button data-role="store" class="active">門市夥伴</button>
+    <button data-role="admin">指定對象（管理）</button>
+  </div>
+</header>
+
+<nav id="nav">
+  <button data-tab="report" class="active">異常回報</button>
+  <button data-tab="list">案件清單</button>
+  <button data-tab="dashboard">儀表板</button>
+  <button data-tab="line">LINE 通知設定</button>
+</nav>
+
+<main>
+  <!-- ===== 回報 ===== -->
+  <section class="view active" id="view-report">
+    <div class="card">
+      <h2>新增異常回報</h2>
+      <p class="hint">門市夥伴只需填寫上半部欄位與上傳照片／影片；標示「指定對象」的欄位由管理端處理。</p>
+
+      <div class="grid">
+        <div>
+          <label>門市 <span class="req">*</span></label>
+          <select id="f_store"></select>
+        </div>
+        <div>
+          <label>日期 <span class="req">*</span></label>
+          <input type="date" id="f_date">
+        </div>
+        <div>
+          <label>品名 <span class="req">*</span></label>
+          <select id="f_name"></select>
+        </div>
+        <div>
+          <label>料號（自動帶入，可修改）</label>
+          <input type="text" id="f_mat" placeholder="選品名後自動帶入">
+        </div>
+        <div>
+          <label>製造日期</label>
+          <input type="date" id="f_mfg">
+        </div>
+        <div>
+          <label>有效日期</label>
+          <input type="date" id="f_exp">
+        </div>
+        <div>
+          <label>異常數量 <span class="req">*</span></label>
+          <input type="text" id="f_qty" placeholder="例：1包 / 3條+11個 / 1245個">
+        </div>
+        <div>
+          <label>異常分類</label>
+          <select id="f_class">
+            <option value="">— 請選擇 —</option>
+            <option>包裝問題</option><option>異物混入</option><option>性狀異常</option>
+            <option>重量異常</option><option>風味/口味異常</option><option>其他</option>
+          </select>
+        </div>
+        <div class="full">
+          <label>異常狀況描述 <span class="req">*</span></label>
+          <textarea id="f_desc" placeholder="例：杯內壓膜裡有異物（昆蟲）"></textarea>
+        </div>
+      </div>
+
+      <div class="full" style="margin-top:14px">
+        <label>照片 / 影片（可多張，支援拍照與錄影）</label>
+        <div class="uploader" id="dropZone">點此或拖曳上傳照片、影片　📷🎥<br><span style="font-size:11px">支援 jpg/png/mp4/mov，建議單檔 &lt; 15MB</span></div>
+        <input type="file" id="f_media" accept="image/*,video/*" multiple capture="environment" hidden>
+        <div class="media-grid" id="mediaPreview"></div>
+      </div>
+
+      <div class="casebox" id="casePreview" style="margin-top:16px">案件編號：（填好門市與日期後自動產生）</div>
+
+      <div class="btn-row">
+        <button class="btn" id="submitBtn">送出回報並通知 LINE</button>
+        <button class="btn sec" id="resetBtn">清空</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 清單 ===== -->
+  <section class="view" id="view-list">
+    <div class="card">
+      <h2>案件清單</h2>
+      <p class="hint" id="roleHintList">指定對象可在此填寫「異常品處理 / 處理方式 / 處理結果」。</p>
+      <div class="filter-bar">
+        <div><label>搜尋</label><input type="text" id="q_text" placeholder="案號 / 門市 / 品名 / 狀況"></div>
+        <div><label>狀態</label><select id="q_status"><option value="">全部</option><option value="pend">待處理</option><option value="done">已處理</option></select></div>
+        <div><label>門市</label><select id="q_store"><option value="">全部門市</option></select></div>
+        <div style="flex:0"><button class="btn sec sm" id="exportBtn" style="margin-bottom:1px">匯出 CSV</button></div>
+      </div>
+      <div class="scrollwrap">
+        <table id="caseTable">
+          <thead><tr>
+            <th data-sort="caseNo">案件編號</th><th data-sort="date">日期</th>
+            <th data-sort="store">門市</th><th data-sort="name">品名</th>
+            <th data-sort="qty">數量</th><th>狀況</th><th>媒體</th>
+            <th data-sort="status">狀態</th><th>操作</th>
+          </tr></thead>
+          <tbody id="caseBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 儀表板 ===== -->
+  <section class="view" id="view-dashboard">
+    <div class="stat-row" id="statRow"></div>
+    <div class="filter-bar card" style="padding:16px">
+      <div><label>期間起</label><input type="date" id="d_from"></div>
+      <div><label>期間迄</label><input type="date" id="d_to"></div>
+      <div style="flex:0"><button class="btn sm" id="applyDash" style="margin-bottom:1px">套用</button></div>
+      <div style="flex:0"><button class="btn ghost sm" id="resetDash" style="margin-bottom:1px">重設</button></div>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-box"><h3>各門市異常件數（Top 12）</h3><div class="chart-canvas"><canvas id="chStore"></canvas></div></div>
+      <div class="chart-box"><h3>異常分類佔比</h3><div class="chart-canvas"><canvas id="chClass"></canvas></div></div>
+      <div class="chart-box"><h3>每月異常趨勢</h3><div class="chart-canvas"><canvas id="chMonth"></canvas></div></div>
+      <div class="chart-box"><h3>處理方式分布</h3><div class="chart-canvas"><canvas id="chMethod"></canvas></div></div>
+    </div>
+  </section>
+
+  <!-- ===== LINE ===== -->
+  <section class="view" id="view-line">
+    <div class="card">
+      <h2>LINE 通知設定</h2>
+      <p class="hint">採用 LINE 官方帳號 Messaging API 推播。填好下面兩格、按「儲存設定」後即可使用；可先用「發送測試訊息」確認。</p>
+      <div class="pill-note">送出案件時，系統會把這裡的設定交給雲端後端代發 LINE（瀏覽器無法直接呼叫 LINE）。設定值會存在本機瀏覽器，請勿在公用電腦留存。</div>
+      <div class="grid">
+        <div class="full"><label>Channel access token（長期）<span style="font-weight:400;color:var(--muted)">　← 一長串英數字，非 32 碼的 Channel secret</span></label><input type="text" id="line_token" placeholder="LINE Developers → Messaging API → Channel access token (long-lived)"></div>
+        <div class="full"><label>推播目標 ID（使用者 userId 或群組 groupId，可多個用逗號分隔）</label><input type="text" id="line_to" placeholder="例：Uxxxxxxxx, Cxxxxxxxx"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="saveLine">儲存設定</button>
+        <button class="btn line" id="testLine">發送測試訊息</button>
+      </div>
+      <hr style="margin:22px 0;border:none;border-top:1px solid var(--line)">
+      <h2>串接步驟</h2>
+      <div style="margin-top:14px">
+        <div class="step"><span class="num">1</span><b>建立 LINE 官方帳號</b>：到 <code>developers.line.biz</code> 建立 Provider 與 Messaging API channel，取得長期 <code>Channel access token</code>。</div>
+        <div class="step"><span class="num">2</span><b>取得推播目標 ID</b>：把官方帳號加入要通知的群組／好友，透過 Webhook 事件取得 <code>groupId</code> 或 <code>userId</code>。</div>
+        <div class="step"><span class="num">3</span><b>填入上方兩格並儲存</b>：把長期 token 與目標 ID 填到上面，按「儲存設定」。送出案件時會由雲端後端（<code>Code.gs</code>）代發，瀏覽器不會直接接觸 LINE。</div>
+        <div class="step"><span class="num">4</span><b>訊息內容</b>：系統已自動組好含案號、門市、品名、數量、狀況的文字，並附上照片／影片連結。</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 詳情 modal -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modalBox"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ====== 基礎資料 ====== */
+const STORES = ["三重正義","中和南勢角","中壢中原","中壢新生","中山南西","信義永吉","信義虎林","信義通化","內壢忠孝","南投復興","台中中科","台中勤美","台中北平","台中大甲","台中大里","台中東山","台中東海","台中豐原","台中逢甲","台中黎明","台北大安","台北大巨蛋","台北石牌","台北萬芳","台北西湖","台南東寧","台南民生","台南永康","嘉義文化","基隆廟口","士林捷運","宜蘭礁溪","彰化員林","彰化彰基","忠孝敦化","斗六中山","新店民權","新竹民生","新竹清大","新莊幸福","板橋中正","林口長庚","桃園中正","桃園藝文","楊梅大成","永和永安市場","汐止中興","站前南陽","竹北勝利","竹北博愛","羅東民權","苗栗頭份","蘆洲光華","高雄巨蛋","高雄瑞隆","高雄美麗島"];
+const PRODUCTS = {"22oz-90打凸A白底雙層杯":"M01030193","UG 22oz-90打凸A白底雙層杯":"M01030193","16oz-90打凸A白底雙層杯":"M01030195","UG 16oz-90打凸A白底雙層杯":"M01030195","PP-90注塑梅花分體蓋 白色":"M01020297","水蜜桃醬":"F04020086","稀釋版西柚糖漿":"F04020088","朱槿風味普洱紅茶":"F01010104","牛皮色紙漿二杯架":"M01010155","二杯架":"M01010155","牛皮色紙漿四杯架":"M01010156","UG 牛皮色紙漿四杯架":"M01010156","蜜燕麥":"F04040132","茉香綠茶":"F01010101","桂花烏龍":"F01010102","鐵觀音":"F01010103","金絲紅茶":"F01010108","糯米香風味綠茶":"F01010107","山茶風味紅烏龍（B)":"F01010112","UG鮮乳":"F07020048","櫻島家鮮奶":"F07020041","歐登堡動物性鮮奶油":"F07020042","冰伯朗":"F07020043","紅西柚果粒罐頭":"F04030108","原味果凍粉":"F03010256","台糖精製細砂":"F04010028","靜岡抹茶粉360":"F03010296","綠哈密瓜風味糖漿":"F04020087","桂花糖漿":"F04010069","冷凍檸檬原汁":"F04020101","UG杯膜":"M01020278","UG杯膜B":"DR12810001","單杯魔術貼不織布提袋":"M01040042","雙杯無紡布保溫袋":"M01040043","四杯魔術貼不織布保冷袋":"M01040057","Mosa氣彈8.5g":"M05010940","電子發票":"M08010023"};
+const HANDLE_OPTS = ["門市報廢","轉回總部","廠商至門市回收","─"];
+const METHOD_OPTS = ["換貨","折讓","─"];
+const LS_KEY="store_anomaly_cases_v1", LS_LINE="store_anomaly_line_v1";
+
+/* ====== 後端 API（雲端）設定 ======
+   部署 Apps Script Web App 後，把 /exec 網址與密鑰填到這裡。
+   兩者留空 => 維持純本機模式（localStorage）。 */
+const API_URL   = "https://script.google.com/macros/s/AKfycbzyZqkKtYuSuMUv31cAaHC3JZU33Gk8ETYvjWtowQ2pn6EfVMv771_biO2V6kH0lgGf/exec";
+const API_TOKEN = "gkt00TlVXvaARtTtBthQ9MUechEw"; // 必須與 Code.gs 的 API_TOKEN 完全一致
+// 管理密碼一律由後端 Code.gs 的 ADMIN_PASSWORD 驗證，不放在前端
+
+/* ====== 狀態 ====== */
+let role="store";
+let adminPass="";   // 管理密碼（登入後保存於記憶體，重整需重新登入）
+let media=[]; // {type,url,name}
+let cases = load();
+let charts={};
+
+function load(){try{return JSON.parse(localStorage.getItem(LS_KEY))||[]}catch(e){return[]}}
+function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(cases));return true}catch(e){console.warn("存檔失敗",e);return false}}
+function getLineCfg(){try{return JSON.parse(localStorage.getItem(LS_LINE))||{}}catch(e){return{}}}
+function setLineCfg(o){try{localStorage.setItem(LS_LINE,JSON.stringify(o))}catch(e){console.warn(e)}}
+
+/* ====== 雲端 API ====== */
+async function api(action,payload){
+  const res=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(Object.assign({action,token:API_TOKEN,adminPass},payload||{}))});
+  const j=await res.json();
+  if(!j.ok)throw new Error(j.error||"伺服器錯誤");
+  return j.data;
+}
+async function syncFromCloud(){
+  if(!API_URL||role!=="admin")return;
+  try{
+    cases=await api("list");
+    save();refreshAll();
+  }catch(e){console.warn("雲端同步失敗，改用本機快取",e);toast("⚠ 雲端連線失敗，顯示本機資料");}
+}
+
+/* ====== 初始化下拉 ====== */
+function fillSelect(el,arr,ph){el.innerHTML="<option value=''>"+ (ph||"— 請選擇 —") +"</option>"+arr.map(s=>`<option>${s}</option>`).join("")}
+fillSelect(f_store,STORES,"— 選擇門市 —");
+fillSelect(f_name,Object.keys(PRODUCTS),"— 選擇品名 —");
+fillSelect(q_store,STORES,"全部門市"); q_store.value="";
+f_date.value = today();
+function today(){const d=new Date();return d.toISOString().slice(0,10)}
+
+f_name.addEventListener("change",()=>{f_mat.value=PRODUCTS[f_name.value]||""});
+[f_store,f_date].forEach(el=>el.addEventListener("change",updateCasePreview));
+
+function pad3(n){return String(n).padStart(3,"0")}
+function ymd(dstr){return dstr.replaceAll("-","")}
+function genCaseNo(store,dstr){
+  const base=ymd(dstr);
+  const n=cases.filter(c=>c.store===store && ymd(c.date)===base).length+1;
+  return store+base+pad3(n);
+}
+function updateCasePreview(){
+  if(f_store.value && f_date.value){
+    casePreview.textContent="案件編號："+genCaseNo(f_store.value,f_date.value);
+  }else casePreview.textContent="案件編號：（填好門市與日期後自動產生）";
+}
+
+/* ====== 媒體上傳 ====== */
+dropZone.addEventListener("click",()=>f_media.click());
+dropZone.addEventListener("dragover",e=>{e.preventDefault();dropZone.style.borderColor="var(--primary)"});
+dropZone.addEventListener("dragleave",()=>dropZone.style.borderColor="");
+dropZone.addEventListener("drop",e=>{e.preventDefault();dropZone.style.borderColor="";handleFiles(e.dataTransfer.files)});
+f_media.addEventListener("change",e=>handleFiles(e.target.files));
+function handleFiles(files){
+  [...files].forEach(file=>{
+    if(file.size > 15*1024*1024){toast("檔案過大（>15MB）已略過："+file.name);return;}
+    const r=new FileReader();
+    r.onload=ev=>{media.push({type:file.type.startsWith("video")?"video":"image",url:ev.target.result,name:file.name});renderMedia()};
+    r.readAsDataURL(file);
+  });
+}
+function renderMedia(){
+  mediaPreview.innerHTML=media.map((m,i)=>`
+    <div class="media-thumb">
+      ${m.type==="video"?`<video src="${m.url}"></video><span class="play">▶</span>`:`<img src="${m.url}">`}
+      <button class="del" onclick="delMedia(${i})">×</button>
+    </div>`).join("");
+}
+function delMedia(i){media.splice(i,1);renderMedia()}
+
+/* ====== 送出 ====== */
+submitBtn.addEventListener("click",async ()=>{
+  if(!f_store.value||!f_date.value||!f_name.value||!f_qty.value||!f_desc.value){
+    toast("請填寫所有必填欄位（*）");return;
+  }
+  if(f_mfg.value && f_exp.value && f_exp.value < f_mfg.value){
+    toast("有效日期不可早於製造日期");return;
+  }
+  const caseNo=genCaseNo(f_store.value,f_date.value);
+  const c={
+    caseNo,date:f_date.value,store:f_store.value,name:f_name.value,mat:f_mat.value,
+    mfg:f_mfg.value,exp:f_exp.value,qty:f_qty.value,cls:f_class.value,desc:f_desc.value,
+    media:media.slice(),
+    handle:"",method:"",result:"",
+    status:"pend",createdAt:new Date().toISOString()
+  };
+
+  if(API_URL){
+    submitBtn.disabled=true;submitBtn.textContent="送出中…";
+    try{
+      const lc=getLineCfg();
+      const saved=await api("create",{
+        case:{date:c.date,store:c.store,name:c.name,mat:c.mat,mfg:c.mfg,exp:c.exp,qty:c.qty,cls:c.cls,desc:c.desc},
+        media:media.map(m=>({name:m.name,type:m.type,data:m.url})),
+        line:{token:lc.token||"",to:lc.to||""}
+      });
+      cases.unshift(saved);save();
+      resetForm();refreshAll();
+      toast("已送出　"+saved.caseNo+"（已存雲端並推播 LINE）");
+    }catch(e){
+      console.warn("雲端送出失敗，暫存本機",e);
+      cases.unshift(c);
+      if(!save()){cases.shift();showQuotaError();}
+      else{resetForm();refreshAll();toast("⚠ 雲端送出失敗，已暫存本機："+caseNo);}
+    }finally{
+      submitBtn.disabled=false;submitBtn.textContent="送出回報並通知 LINE";
+    }
+    return;
+  }
+
+  // 純本機模式（未設定雲端）
+  cases.unshift(c);
+  if(!save()){cases.shift();showQuotaError();return;}
+  notifyLine(c);
+  resetForm();refreshAll();
+  toast("已送出　"+caseNo+"　並推播 LINE");
+});
+resetBtn.addEventListener("click",resetForm);
+function resetForm(){
+  f_name.value="";f_mat.value="";f_mfg.value="";f_exp.value="";f_qty.value="";
+  f_class.value="";f_desc.value="";media=[];renderMedia();f_date.value=today();
+  updateCasePreview();
+}
+
+/* ====== LINE 推播 ====== */
+function buildMsg(c){
+  return `【門市物料異常通知】\n案件編號：${c.caseNo}\n門市：${c.store}\n日期：${c.date}\n品名：${c.name}（${c.mat||"無料號"}）\n異常數量：${c.qty}\n異常分類：${c.cls||"未分類"}\n狀況：${c.desc}\n附件：${c.media.length} 個照片/影片\n— 請指定對象登入系統處理 —`;
+}
+function notifyLine(c){
+  const cfg=getLineCfg();
+  const msg=buildMsg(c);
+  if(cfg.hook){
+    fetch(cfg.hook,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({to:(cfg.to||"").split(",").map(s=>s.trim()).filter(Boolean),message:msg})})
+      .catch(()=>{});
+  }
+  showModal(`<button class="close-x" onclick="closeModal()">×</button>
+    <h2>📲 LINE 模擬推播</h2>
+    <div class="pill-note">${cfg.hook?"已同步呼叫你的後端 Webhook 嘗試真實發送。":"尚未設定後端 Webhook，以下為模擬內容。請至「LINE 通知設定」完成串接。"}</div>
+    <pre style="background:#06c755;color:#fff;padding:16px;border-radius:12px;white-space:pre-wrap;font-family:inherit;font-size:13.5px">${msg.replace(/</g,"&lt;")}</pre>`);
+}
+
+/* ====== 清單 ====== */
+let sortKey="createdAt",sortDir=-1;
+[q_text,q_status,q_store].forEach(el=>el.addEventListener("input",renderList));
+document.querySelectorAll("#caseTable th[data-sort]").forEach(th=>{
+  th.addEventListener("click",()=>{const k=th.dataset.sort;sortDir=(sortKey===k)?-sortDir:1;sortKey=k;renderList()});
+});
+function filtered(){
+  const q=q_text.value.trim().toLowerCase(),st=q_status.value,sv=q_store.value;
+  return cases.filter(c=>{
+    if(st && c.status!==st)return false;
+    if(sv && c.store!==sv)return false;
+    if(q){const blob=(c.caseNo+c.store+c.name+c.desc+c.qty).toLowerCase();if(!blob.includes(q))return false}
+    return true;
+  }).sort((a,b)=>{
+    let x=a[sortKey]||"",y=b[sortKey]||"";return x<y?-sortDir:x>y?sortDir:0;
+  });
+}
+function renderList(){
+  const rows=filtered();
+  if(!rows.length){caseBody.innerHTML=`<tr><td colspan="9"><div class="empty">尚無符合的案件</div></td></tr>`;return}
+  caseBody.innerHTML=rows.map(c=>{
+    const idx=cases.indexOf(c);
+    return `<tr>
+      <td><b>${esc(c.caseNo)}</b></td><td>${esc(c.date)}</td><td>${esc(c.store)}</td>
+      <td>${esc(c.name)}</td><td>${esc(c.qty)}</td>
+      <td style="max-width:180px">${esc(c.desc)}</td>
+      <td>${c.media.length?`📎${c.media.length}`:"—"}</td>
+      <td><span class="tag ${c.status}">${c.status==="done"?"已處理":"待處理"}</span></td>
+      <td><button class="btn sm ghost" onclick="openCase(${idx})">${role==="admin"?"處理":"檢視"}</button></td>
+    </tr>`;
+  }).join("");
+}
+
+/* ====== 案件詳情 / 處理 ====== */
+function openCase(idx){
+  const c=cases[idx];
+  const mediaHtml=c.media.length?`<div class="modal-media">${c.media.map(m=>
+    m.type==="video"?`<video src="${m.url}" controls></video>`:`<img src="${m.url}">`).join("")}</div>`
+    :`<p style="color:var(--muted)">無附件</p>`;
+  const adminFields=`
+    <div class="grid" style="margin-top:6px">
+      <div><label>異常品處理（指定對象）</label>
+        <select id="m_handle" ${role!=="admin"?"disabled":""}>
+          <option value="">— 請選擇 —</option>${HANDLE_OPTS.map(o=>`<option ${c.handle===o?"selected":""}>${o}</option>`).join("")}
+        </select></div>
+      <div><label>處理方式（指定對象）</label>
+        <select id="m_method" ${role!=="admin"?"disabled":""}>
+          <option value="">— 請選擇 —</option>${METHOD_OPTS.map(o=>`<option ${c.method===o?"selected":""}>${o}</option>`).join("")}
+        </select></div>
+      <div class="full"><label>處理結果（指定對象 KEYIN）</label>
+        <textarea id="m_result" ${role!=="admin"?"disabled":""} placeholder="例：2025/10 廠商安排補貨1包至門市">${esc(c.result)}</textarea></div>
+    </div>`;
+  showModal(`<button class="close-x" onclick="closeModal()">×</button>
+    <h2>${esc(c.caseNo)}　<span class="tag ${c.status}">${c.status==="done"?"已處理":"待處理"}</span></h2>
+    <div class="kv">
+      <div class="k">門市</div><div>${esc(c.store)}</div>
+      <div class="k">日期</div><div>${esc(c.date)}</div>
+      <div class="k">品名 / 料號</div><div>${esc(c.name)}　${esc(c.mat||"")}</div>
+      <div class="k">製造 / 有效</div><div>${esc(c.mfg||"—")} ～ ${esc(c.exp||"—")}</div>
+      <div class="k">異常數量</div><div>${esc(c.qty)}</div>
+      <div class="k">異常分類</div><div>${esc(c.cls||"—")}</div>
+      <div class="k">狀況描述</div><div>${esc(c.desc)}</div>
+    </div>
+    <label>附件照片 / 影片</label>${mediaHtml}
+    <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)">
+    ${adminFields}
+    ${role==="admin"?`<div class="btn-row"><button class="btn" onclick="saveCase(${idx})">儲存處理結果</button></div>`
+      :`<p class="hint" style="margin-top:10px">切換為「指定對象」角色才能填寫處理欄位。</p>`}`);
+}
+async function saveCase(idx){
+  const c=cases[idx];
+  c.handle=document.getElementById("m_handle").value;
+  c.method=document.getElementById("m_method").value;
+  c.result=document.getElementById("m_result").value;
+  c.status=(c.handle&&c.method&&c.result)?"done":"pend";
+  if(API_URL){
+    try{ await api("update",{caseNo:c.caseNo,handle:c.handle,method:c.method,result:c.result,status:c.status}); }
+    catch(e){ console.warn("雲端更新失敗",e); toast("⚠ 雲端更新失敗，已暫存本機"); }
+  }
+  if(!save()){toast("⚠ 儲存失敗：本機空間已滿");return;}
+  refreshAll();closeModal();
+  toast("已更新　"+c.caseNo);
+}
+function showQuotaError(){
+  showModal(`<button class="close-x" onclick="closeModal()">×</button>
+    <h2>⚠ 儲存失敗</h2>
+    <div class="pill-note">瀏覽器本機儲存空間（約 5MB）已滿，本筆案件<b>尚未存檔</b>。常見原因是照片／影片附件過大。<br>請移除部分或較大的附件後重新送出；建議設定雲端後端以改用 Google Drive 儲存附件。</div>`);
+}
+
+/* ====== 儀表板 ====== */
+function dashData(){
+  const f=d_from.value,t=d_to.value;
+  return cases.filter(c=>(!f||c.date>=f)&&(!t||c.date<=t));
+}
+function renderDash(){
+  const data=dashData();
+  const pend=data.filter(c=>c.status==="pend").length;
+  statRow.innerHTML=`
+    <div class="stat"><div class="n">${data.length}</div><div class="l">異常案件總數</div></div>
+    <div class="stat warn"><div class="n">${pend}</div><div class="l">待處理</div></div>
+    <div class="stat ok"><div class="n">${data.length-pend}</div><div class="l">已處理</div></div>
+    <div class="stat"><div class="n">${new Set(data.map(c=>c.store)).size}</div><div class="l">涉及門市數</div></div>
+    <div class="stat danger"><div class="n">${data.filter(c=>c.cls==="異物混入").length}</div><div class="l">異物混入</div></div>`;
+  drawCharts(data);
+}
+function countBy(arr,key){const m={};arr.forEach(c=>{const k=key(c)||"未分類";m[k]=(m[k]||0)+1});return m}
+function mkChart(id,type,labels,vals,opts={}){
+  if(charts[id])charts[id].destroy();
+  const ctx=document.getElementById(id);
+  const palette=["#2c6e49","#d68c45","#4a90d9","#c0392b","#8e44ad","#16a085","#e08e0b","#5d6d7e","#27ae60","#cb4335","#2980b9","#7d3c98"];
+  charts[id]=new Chart(ctx,{type,data:{labels,datasets:[{data:vals,backgroundColor:type==="line"?"rgba(44,110,73,.15)":palette,borderColor:"#2c6e49",borderWidth:type==="line"?2:0,fill:type==="line",tension:.3}]},
+    options:Object.assign({responsive:true,maintainAspectRatio:false,plugins:{legend:{display:type==="doughnut"||type==="pie",position:"right",labels:{font:{size:11}}}}},opts)});
+}
+function drawCharts(data){
+  if(typeof Chart==="undefined"){console.error("Chart.js 未載入（可能無網路或 CDN 被擋）");toast("⚠ 圖表元件載入失敗，請確認網路連線");return;}
+  const byStore=countBy(data,c=>c.store);
+  const top=Object.entries(byStore).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  mkChart("chStore","bar",top.map(x=>x[0]),top.map(x=>x[1]),{indexAxis:"y",plugins:{legend:{display:false}}});
+  const byClass=countBy(data,c=>c.cls);
+  mkChart("chClass","doughnut",Object.keys(byClass),Object.values(byClass));
+  const byMonth=countBy(data,c=>(c.date||"").slice(0,7));
+  const mk=Object.keys(byMonth).sort();
+  mkChart("chMonth","line",mk,mk.map(k=>byMonth[k]),{plugins:{legend:{display:false}}});
+  const byMethod=countBy(data,c=>c.method||"未處理");
+  mkChart("chMethod","pie",Object.keys(byMethod),Object.values(byMethod));
+}
+applyDash.addEventListener("click",renderDash);
+resetDash.addEventListener("click",()=>{d_from.value="";d_to.value="";renderDash()});
+
+/* ====== 匯出 CSV ====== */
+exportBtn.addEventListener("click",()=>{
+  const head=["案件編號","日期","門市","料號","品名","製造日期","有效日期","異常數量","異常分類","異常狀況","異常品處理","處理方式","處理結果","狀態","附件數"];
+  const rows=filtered().map(c=>[c.caseNo,c.date,c.store,c.mat,c.name,c.mfg,c.exp,c.qty,c.cls,c.desc,c.handle,c.method,c.result,c.status==="done"?"已處理":"待處理",c.media.length]);
+  const csv="﻿"+[head,...rows].map(r=>r.map(x=>`"${String(x||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download="門市異常_"+today()+".csv";a.click();
+});
+
+/* ====== LINE 設定 ====== */
+(function(){const c=getLineCfg();line_token.value=c.token||"";line_to.value=c.to||""})();
+saveLine.addEventListener("click",async ()=>{
+  const cfg={token:line_token.value.trim(),to:line_to.value.trim()};setLineCfg(cfg);
+  if(API_URL){
+    saveLine.disabled=true;
+    try{ await api("saveLine",{line:cfg}); toast("LINE 設定已儲存（雲端，全門市共用）"); }
+    catch(e){ toast("⚠ 雲端儲存失敗："+e.message); }
+    finally{ saveLine.disabled=false; }
+  }else{
+    toast("LINE 設定已儲存（本機）");
+  }
+});
+testLine.addEventListener("click",async ()=>{
+  const cfg={token:line_token.value.trim(),to:line_to.value.trim()};setLineCfg(cfg);
+  if(!cfg.token){toast("請先填寫 Channel access token");return;}
+  if(API_URL){
+    testLine.disabled=true;
+    try{
+      const r=await api("pushTest",{line:cfg});   // 後端以「廣播」發送，不需目標 ID
+      if(r.code===200) toast("✅ 已發送測試廣播，請看 LINE（需先把官方帳號加為好友）");
+      else{console.warn("LINE 回應：",r);toast("⚠ 測試失敗（HTTP "+r.code+"）："+String(r.detail||"").slice(0,80));}
+    }catch(e){toast("⚠ 測試失敗："+e.message);}
+    finally{testLine.disabled=false;}
+    return;
+  }
+  // 未設定雲端：僅顯示模擬內容
+  notifyLine({caseNo:"測試"+ymd(today())+"001",store:"測試門市",date:today(),name:"測試品項",mat:"TEST",qty:"1個",cls:"其他",desc:"這是一則測試訊息",media:[]});
+});
+
+/* ====== 角色 / 分頁 ====== */
+/* 依角色控制分頁可見性：案件清單 / 儀表板 / LINE 設定僅限管理（指定對象） */
+function applyRoleUI(){
+  const adminOnly=["list","dashboard","line"];
+  adminOnly.forEach(t=>{
+    document.querySelector(`[data-tab="${t}"]`).style.display = role==="admin" ? "" : "none";
+  });
+  const active=document.querySelector("nav button.active");
+  if(role!=="admin" && active && adminOnly.includes(active.dataset.tab)){
+    document.querySelector('[data-tab="report"]').click();
+  }
+  roleHintList.textContent=role==="admin"
+    ?"指定對象可在此填寫「異常品處理 / 處理方式 / 處理結果」。"
+    :"門市夥伴可檢視自己回報的案件狀態（處理欄位唯讀）。";
+}
+function setRole(r){
+  role=r;
+  roleSwitch.querySelectorAll("button").forEach(x=>x.classList.toggle("active",x.dataset.role===r));
+  applyRoleUI();
+  renderList();
+}
+function openAdminLogin(){
+  showModal(`<button class="close-x" onclick="closeModal()">×</button>
+    <h2>管理登入</h2>
+    <p class="hint">請輸入管理密碼，進入指定對象（管理）模式。</p>
+    <input type="password" id="adminPwInput" placeholder="管理密碼" style="margin-top:6px">
+    <div id="adminPwErr" style="color:var(--danger);font-size:13px;margin:10px 0;display:none">密碼錯誤，請再試一次</div>
+    <div class="btn-row"><button class="btn" id="adminPwBtn">登入</button></div>`);
+  const el=document.getElementById("adminPwInput"),btn=document.getElementById("adminPwBtn");
+  if(btn)btn.addEventListener("click",submitAdminLogin);
+  if(el){el.focus();el.addEventListener("keydown",e=>{if(e.key==="Enter")submitAdminLogin();});}
+}
+async function submitAdminLogin(){
+  const el=document.getElementById("adminPwInput"),er=document.getElementById("adminPwErr");
+  const pw=el?el.value:"";
+  if(!pw)return;
+  if(API_URL){
+    adminPass=pw;
+    try{
+      cases=await api("list");save();
+      setRole("admin");refreshAll();closeModal();toast("已進入管理模式");
+    }catch(e){adminPass="";if(er)er.style.display="block";}
+  }else{
+    if(er)er.style.display="block"; // 未設定雲端 API_URL 時無法驗證管理密碼
+  }
+}
+roleSwitch.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  const target=b.dataset.role;
+  if(target==="admin"&&role!=="admin"){openAdminLogin();return;}
+  if(target==="store")adminPass="";
+  setRole(target);
+}));
+nav.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  nav.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.getElementById("view-"+b.dataset.tab).classList.add("active");
+  if(b.dataset.tab==="dashboard")renderDash();
+  if(b.dataset.tab==="list")renderList();
+}));
+
+/* ====== 工具 ====== */
+function esc(s){return String(s||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function showModal(html){modalBox.innerHTML=html;modalBg.classList.add("show")}
+function closeModal(){modalBg.classList.remove("show")}
+modalBg.addEventListener("click",e=>{if(e.target===modalBg)closeModal()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&modalBg.classList.contains("show"))closeModal()});
+let toastT;function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2600)}
+function refreshAll(){renderList();updateCasePreview();if(document.getElementById("view-dashboard").classList.contains("active"))renderDash()}
+
+/* ====== 啟動：示範資料（首次） ====== */
+if(!cases.length){
+  const demo=[
+    {date:"2026-01-02",store:"嘉義文化",name:"山茶風味紅烏龍（B)",qty:"2包",cls:"包裝問題",desc:"印刷異常",handle:"門市報廢",method:"折讓",result:"折讓",status:"done"},
+    {date:"2026-01-02",store:"嘉義文化",name:"UG 22oz-90打凸A白底雙層杯",qty:"4個",cls:"異物混入",desc:"杯內壓膜裡有異物（昆蟲）",handle:"門市報廢",method:"折讓",result:"",status:"pend"},
+    {date:"2026-01-04",store:"高雄瑞隆",name:"冰伯朗",qty:"1瓶",cls:"性狀異常",desc:"包裝破損，味道變質（有結塊）",handle:"",method:"",result:"",status:"pend"},
+    {date:"2026-01-05",store:"台中東山",name:"金絲紅茶",qty:"1包",cls:"異物混入",desc:"內有異物（綠色棉線）",handle:"轉回總部",method:"折讓",result:"折讓給加盟主",status:"done"}
+  ].map(d=>({caseNo:"",mat:PRODUCTS[d.name]||"",mfg:"",exp:"",media:[],createdAt:new Date(d.date).toISOString(),...d}));
+  // 產生案號
+  const counter={};
+  demo.sort((a,b)=>a.date<b.date?-1:1).forEach(d=>{const base=ymd(d.date),key=d.store+base;counter[key]=(counter[key]||0)+1;d.caseNo=d.store+base+pad3(counter[key])});
+  cases=demo;save();
+}
+applyRoleUI();
+updateCasePreview();renderList();
+syncFromCloud();
+</script>
+</body>
+</html>
