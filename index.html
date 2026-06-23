@@ -181,6 +181,7 @@
   <button data-tab="report" class="active">異常回報</button>
   <button data-tab="list">案件清單</button>
   <button data-tab="dashboard">儀表板</button>
+  <button data-tab="data">資料維護</button>
   <button data-tab="line">LINE 通知設定</button>
 </nav>
 
@@ -291,6 +292,28 @@
     </div>
   </section>
 
+  <!-- ===== 資料維護 ===== -->
+  <section class="view" id="view-data">
+    <div class="card">
+      <h2>門市清單維護</h2>
+      <p class="hint">每行一個門市名稱（可直接新增、修改、刪除或整批貼上匯入）。按「儲存門市」後存到雲端，全門市即時同步。</p>
+      <textarea id="dm_stores" style="min-height:240px;font-family:inherit" placeholder="一行一個門市名稱"></textarea>
+      <div class="btn-row">
+        <button class="btn" id="dmSaveStores">儲存門市</button>
+        <button class="btn sec" id="dmReloadStores">重新載入</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>品名主檔維護</h2>
+      <p class="hint">每行一筆，格式「<b>品名,料號</b>」（用半形逗號分隔；料號可留空）。可整批貼上匯入。按「儲存品名」後全門市下拉同步。</p>
+      <textarea id="dm_products" style="min-height:320px;font-family:inherit" placeholder="品名,料號"></textarea>
+      <div class="btn-row">
+        <button class="btn" id="dmSaveProducts">儲存品名</button>
+        <button class="btn sec" id="dmReloadProducts">重新載入</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== LINE ===== -->
   <section class="view" id="view-line">
     <div class="card">
@@ -336,7 +359,9 @@
 
 <script>
 /* ====== 基礎資料 ====== */
-const STORES = ["三重正義","中和南勢角","中壢中原","中壢新生","中山南西","信義永吉","信義虎林","信義通化","內壢忠孝","南投復興","台中中科","台中勤美","台中北平","台中大甲","台中大里","台中東山","台中東海","台中豐原","台中逢甲","台中黎明","台北大安","台北大巨蛋","台北石牌","台北萬芳","台北西湖","台南東寧","台南民生","台南永康","嘉義文化","基隆廟口","士林捷運","宜蘭礁溪","彰化員林","彰化彰基","忠孝敦化","斗六中山","新店民權","新竹民生","新竹清大","新莊幸福","板橋中正","林口長庚","桃園中正","桃園藝文","楊梅大成","永和永安市場","汐止中興","站前南陽","竹北勝利","竹北博愛","羅東民權","苗栗頭份","蘆洲光華","高雄巨蛋","高雄瑞隆","高雄美麗島"];
+/* 門市清單：預設為內建，啟動後會以後端 stores 主檔覆蓋；可在「資料維護」分頁新增/匯入。 */
+let STORES = ["三重正義","中和南勢角","中壢中原","中壢新生","中山南西","信義永吉","信義虎林","信義通化","內壢忠孝","南投復興","台中中科","台中勤美","台中北平","台中大甲","台中大里","台中東山","台中東海","台中豐原","台中逢甲","台中黎明","台北大安","台北大巨蛋","台北石牌","台北萬芳","台北西湖","台南東寧","台南民生","台南永康","嘉義文化","基隆廟口","士林捷運","宜蘭礁溪","彰化員林","彰化彰基","忠孝敦化","斗六中山","新店民權","新竹民生","新竹清大","新莊幸福","板橋中正","林口長庚","桃園中正","桃園藝文","楊梅大成","永和永安市場","汐止中興","站前南陽","竹北勝利","竹北博愛","羅東民權","苗栗頭份","蘆洲光華","高雄巨蛋","高雄瑞隆","高雄美麗島"];
+const CLASS_OPTS = ["包裝問題","異物混入","性狀異常","重量異常","風味/口味異常","其他"];
 /* 品名主檔（料號相同者已去重，保留 UG 版本）。預設為內建清單，啟動後會以後端 products 主檔覆蓋；
    日後改動只需編輯後端試算表的 products 分頁，全門市下拉即時同步。 */
 let PRODUCTS = {"UG 22oz-90打凸A白底雙層杯":"M01030193","UG 16oz-90打凸A白底雙層杯":"M01030195","PP-90注塑梅花分體蓋 白色":"M01020297","水蜜桃醬":"F04020086","稀釋版西柚糖漿":"F04020088","朱槿風味普洱紅茶":"F01010104","牛皮色紙漿二杯架":"M01010155","UG 牛皮色紙漿四杯架":"M01010156","蜜燕麥":"F04040132","茉香綠茶":"F01010101","桂花烏龍":"F01010102","鐵觀音":"F01010103","金絲紅茶":"F01010108","糯米香風味綠茶":"F01010107","山茶風味紅烏龍（B)":"F01010112","UG鮮乳":"F07020048","櫻島家鮮奶":"F07020041","歐登堡動物性鮮奶油":"F07020042","冰伯朗":"F07020043","紅西柚果粒罐頭":"F04030108","原味果凍粉":"F03010256","台糖精製細砂":"F04010028","靜岡抹茶粉360":"F03010296","綠哈密瓜風味糖漿":"F04020087","桂花糖漿":"F04010069","冷凍檸檬原汁":"F04020101","UG杯膜":"M01020278","UG杯膜B":"DR12810001","單杯魔術貼不織布提袋":"M01040042","雙杯無紡布保溫袋":"M01040043","四杯魔術貼不織布保冷袋":"M01040057","Mosa氣彈8.5g":"M05010940","電子發票":"M08010023"};
@@ -395,11 +420,27 @@ async function syncFromCloud(){
 
 /* ====== 初始化下拉 ====== */
 function fillSelect(el,arr,ph){el.innerHTML="<option value=''>"+ (ph||"— 請選擇 —") +"</option>"+arr.map(s=>`<option>${s}</option>`).join("")}
-fillSelect(f_store,STORES,"— 選擇門市 —");
+buildStoreSelects();
 buildProductSelect();
-fillSelect(q_store,STORES,"全部門市"); q_store.value="";
 f_date.value = today();
 function today(){const d=new Date();return d.toISOString().slice(0,10)}
+
+/* 依目前 STORES 重建門市下拉（回報用 f_store、清單篩選用 q_store），保留目前選取 */
+function buildStoreSelects(){
+  const a=f_store.value, b=q_store.value;
+  fillSelect(f_store,STORES,"— 選擇門市 —");
+  fillSelect(q_store,STORES,"全部門市");
+  if(a) f_store.value=a;
+  q_store.value=b||"";
+}
+/* 從後端門市主檔載入，覆蓋內建清單（離線時沿用內建） */
+async function loadStores(){
+  if(!API_URL)return;
+  try{
+    const list=await api("stores");
+    if(Array.isArray(list)&&list.length){ STORES=list.map(String); buildStoreSelects(); }
+  }catch(e){console.warn("門市主檔載入失敗，沿用內建清單",e);}
+}
 
 /* 依目前 PRODUCTS 重建品名下拉，並在最後附上「其他（自行輸入）」 */
 function buildProductSelect(){
@@ -620,21 +661,44 @@ function openCase(idx){
     </div>`;
   }).join("")}</div>`
     :`<p style="color:var(--muted)">無附件</p>`;
-  const adminFields=`
-    <div class="grid" style="margin-top:6px">
-      <div><label>異常品處理（指定對象）</label>
-        <select id="m_handle" ${role!=="admin"?"disabled":""}>
-          <option value="">— 請選擇 —</option>${HANDLE_OPTS.map(o=>`<option ${c.handle===o?"selected":""}>${o}</option>`).join("")}
-        </select></div>
-      <div><label>處理方式（指定對象）</label>
-        <select id="m_method" ${role!=="admin"?"disabled":""}>
-          <option value="">— 請選擇 —</option>${METHOD_OPTS.map(o=>`<option ${c.method===o?"selected":""}>${o}</option>`).join("")}
-        </select></div>
-      <div class="full"><label>處理結果（指定對象 KEYIN）</label>
-        <textarea id="m_result" ${role!=="admin"?"disabled":""} placeholder="例：2025/10 廠商安排補貨1包至門市">${esc(c.result)}</textarea></div>
+  const isAdmin=role==="admin";
+  const inMaster=PRODUCTS[c.name]!==undefined;
+
+  // 審核人員：品名/料號/數量/分類/製造/有效可改；門市/日期/狀況唯讀。改品名會自動帶料號。
+  const adminDetail=`
+    <div class="kv">
+      <div class="k">門市</div><div>${esc(c.store)}</div>
+      <div class="k">日期</div><div>${esc(c.date)}</div>
+      <div class="k">狀況描述</div><div>${esc(c.desc)}</div>
+    </div>
+    <div class="pill-note">可修正門市輸入錯誤的資料；選「品名」會自動帶出對應料號（選「其他」則自行輸入品名與料號）。</div>
+    <div class="grid">
+      <div><label>品名</label>
+        <select id="m_name" onchange="onModalNameChange()">
+          <option value=''>— 選擇品名 —</option>
+          ${Object.keys(PRODUCTS).map(s=>`<option value="${s.replace(/"/g,'&quot;')}" ${c.name===s?"selected":""}>${esc(s)}</option>`).join("")}
+          <option value="${OTHER_OPT}" ${!inMaster?"selected":""}>其他（自行輸入）</option>
+        </select>
+        <input type="text" id="m_name_other" placeholder="自行輸入品名" value="${!inMaster?esc(c.name):""}" style="margin-top:8px;display:${!inMaster?"":"none"}">
+      </div>
+      <div><label>料號</label><input type="text" id="m_mat" value="${esc(c.mat||"")}"></div>
+      <div><label>製造日期</label><input type="date" id="m_mfg" value="${esc(c.mfg||"")}"></div>
+      <div><label>有效日期</label><input type="date" id="m_exp" value="${esc(c.exp||"")}"></div>
+      <div><label>異常數量</label><input type="text" id="m_qty" value="${esc(c.qty||"")}"></div>
+      <div><label>異常分類</label>
+        <select id="m_cls"><option value="">— 請選擇 —</option>${CLASS_OPTS.map(o=>`<option ${c.cls===o?"selected":""}>${o}</option>`).join("")}</select></div>
+    </div>
+    <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)">
+    <div class="grid">
+      <div><label>異常品處理</label>
+        <select id="m_handle"><option value="">— 請選擇 —</option>${HANDLE_OPTS.map(o=>`<option ${c.handle===o?"selected":""}>${o}</option>`).join("")}</select></div>
+      <div><label>處理方式</label>
+        <select id="m_method"><option value="">— 請選擇 —</option>${METHOD_OPTS.map(o=>`<option ${c.method===o?"selected":""}>${o}</option>`).join("")}</select></div>
+      <div class="full"><label>處理結果</label>
+        <textarea id="m_result" placeholder="例：2025/10 廠商安排補貨1包至門市">${esc(c.result)}</textarea></div>
     </div>`;
-  showModal(`<button class="close-x" onclick="closeModal()">×</button>
-    <h2>${esc(c.caseNo)}　<span class="tag ${c.status}">${c.status==="done"?"已處理":"待處理"}</span></h2>
+
+  const storeDetail=`
     <div class="kv">
       <div class="k">門市</div><div>${esc(c.store)}</div>
       <div class="k">日期</div><div>${esc(c.date)}</div>
@@ -643,21 +707,45 @@ function openCase(idx){
       <div class="k">異常數量</div><div>${esc(c.qty)}</div>
       <div class="k">異常分類</div><div>${esc(c.cls||"—")}</div>
       <div class="k">狀況描述</div><div>${esc(c.desc)}</div>
-    </div>
-    <label>附件照片 / 影片</label>${mediaHtml}
-    <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)">
-    ${adminFields}
-    ${role==="admin"?`<div class="btn-row"><button class="btn" onclick="saveCase(${idx})">儲存處理結果</button></div>`
-      :`<p class="hint" style="margin-top:10px">切換為「指定對象」角色才能填寫處理欄位。</p>`}`);
+    </div>`;
+
+  showModal(`<button class="close-x" onclick="closeModal()">×</button>
+    <h2>${esc(c.caseNo)}　<span class="tag ${c.status}">${c.status==="done"?"已處理":"待處理"}</span></h2>
+    ${isAdmin?adminDetail:storeDetail}
+    <label style="display:block;margin-top:14px">附件照片 / 影片</label>${mediaHtml}
+    ${isAdmin?`<div class="btn-row"><button class="btn" onclick="saveCase(${idx})">儲存</button></div>`
+      :`<p class="hint" style="margin-top:10px">切換為「指定對象」角色才能編輯與處理。</p>`}`);
+}
+/* 詳情頁（管理）改品名 → 自動帶出對應料號；選「其他」可自行輸入 */
+function onModalNameChange(){
+  const sel=document.getElementById("m_name"),other=document.getElementById("m_name_other"),mat=document.getElementById("m_mat");
+  if(!sel)return;
+  if(sel.value===OTHER_OPT){ other.style.display=""; other.focus(); }
+  else { other.style.display="none"; other.value=""; mat.value=PRODUCTS[sel.value]||""; }
 }
 async function saveCase(idx){
   const c=cases[idx];
+  // 審核人員可調整的案件欄位（品名/料號/數量/分類/製造/有效）
+  const sel=document.getElementById("m_name");
+  if(sel){
+    const isOther=sel.value===OTHER_OPT;
+    const nm=isOther?document.getElementById("m_name_other").value.trim():sel.value;
+    if(!nm){toast("請選擇或輸入品名");return;}
+    const mfg=document.getElementById("m_mfg").value, exp=document.getElementById("m_exp").value;
+    if(mfg&&exp&&exp<mfg){toast("有效日期不可早於製造日期");return;}
+    c.name=nm;
+    c.mat=document.getElementById("m_mat").value.trim();
+    c.mfg=mfg; c.exp=exp;
+    c.qty=document.getElementById("m_qty").value.trim();
+    c.cls=document.getElementById("m_cls").value;
+  }
   c.handle=document.getElementById("m_handle").value;
   c.method=document.getElementById("m_method").value;
   c.result=document.getElementById("m_result").value;
   c.status=(c.handle&&c.method&&c.result)?"done":"pend";
   if(API_URL){
-    try{ await api("update",{caseNo:c.caseNo,handle:c.handle,method:c.method,result:c.result,status:c.status}); }
+    try{ await api("update",{caseNo:c.caseNo,name:c.name,mat:c.mat,qty:c.qty,cls:c.cls,mfg:c.mfg,exp:c.exp,
+      handle:c.handle,method:c.method,result:c.result,status:c.status}); }
     catch(e){ console.warn("雲端更新失敗",e); toast("⚠ 雲端更新失敗，已暫存本機"); }
   }
   if(!save()){toast("⚠ 儲存失敗：本機空間已滿");return;}
@@ -760,7 +848,7 @@ testLine.addEventListener("click",async ()=>{
 /* ====== 角色 / 分頁 ====== */
 /* 依角色控制分頁可見性：案件清單 / 儀表板 / LINE 設定僅限管理（指定對象） */
 function applyRoleUI(){
-  const adminOnly=["list","dashboard","line"];
+  const adminOnly=["list","dashboard","data","line"];
   adminOnly.forEach(t=>{
     document.querySelector(`[data-tab="${t}"]`).style.display = role==="admin" ? "" : "none";
   });
@@ -816,7 +904,35 @@ nav.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   document.getElementById("view-"+b.dataset.tab).classList.add("active");
   if(b.dataset.tab==="dashboard")renderDash();
   if(b.dataset.tab==="list")renderList();
+  if(b.dataset.tab==="data"){dmFillStores();dmFillProducts();}
 }));
+
+/* ====== 資料維護（門市 / 品名主檔）====== */
+function dmFillStores(){ if(window.dm_stores) dm_stores.value=STORES.join("\n"); }
+function dmFillProducts(){ if(window.dm_products) dm_products.value=Object.keys(PRODUCTS).map(n=>n+","+(PRODUCTS[n]||"")).join("\n"); }
+dmSaveStores.addEventListener("click",async ()=>{
+  const seen={}, arr=dm_stores.value.split(/\r?\n/).map(s=>s.trim()).filter(s=>s&&!seen[s]&&(seen[s]=true));
+  if(!arr.length){toast("門市清單不可全空");return;}
+  dmSaveStores.disabled=true;
+  try{ await api("saveStores",{stores:arr}); STORES=arr; buildStoreSelects(); dmFillStores(); toast("門市已儲存（"+arr.length+" 間）"); }
+  catch(e){ toast("⚠ 儲存失敗："+e.message); }
+  finally{ dmSaveStores.disabled=false; }
+});
+dmSaveProducts.addEventListener("click",async ()=>{
+  const rows=dm_products.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(line=>{
+    const i=line.lastIndexOf(",");
+    return {name:(i<0?line:line.slice(0,i)).trim(), mat:(i<0?"":line.slice(i+1)).trim()};
+  }).filter(p=>p.name);
+  if(!rows.length){toast("品名清單不可全空");return;}
+  dmSaveProducts.disabled=true;
+  try{ await api("saveProducts",{products:rows});
+    const obj={}; rows.forEach(p=>{obj[p.name]=p.mat}); PRODUCTS=obj; buildProductSelect(); dmFillProducts();
+    toast("品名已儲存（"+rows.length+" 筆）"); }
+  catch(e){ toast("⚠ 儲存失敗："+e.message); }
+  finally{ dmSaveProducts.disabled=false; }
+});
+dmReloadStores.addEventListener("click",async ()=>{ await loadStores(); dmFillStores(); toast("已重新載入門市"); });
+dmReloadProducts.addEventListener("click",async ()=>{ await loadProducts(); dmFillProducts(); toast("已重新載入品名"); });
 
 /* ====== 工具 ====== */
 function esc(s){return String(s||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
@@ -844,6 +960,7 @@ if(!cases.length){
 }
 applyRoleUI();
 renderList();
+loadStores();
 loadProducts();
 syncFromCloud();
 </script>
