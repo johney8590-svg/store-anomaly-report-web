@@ -385,6 +385,7 @@ const METHOD_OPTS = ["換貨","折讓","─"];
 const LS_KEY="store_anomaly_cases_v1", LS_LINE="store_anomaly_line_v1";
 const OTHER_OPT="__other__"; // 品名選單「其他（自行輸入）」的值
 const PUBLIC_SITE="https://johney8590-svg.github.io/store-anomaly-report-web/";
+const ADMIN_SITE=PUBLIC_SITE+"admin.html"; // 通知連結導向管理入口，人員點進去可直接登入處理
 /* LINE 通知預設範本（可在「LINE 通知設定」調整；可用代入欄位見設定頁說明） */
 const DEFAULT_LINE_TPL=
   "【門市物料異常通知】\n"+
@@ -587,7 +588,7 @@ function fillTpl(tpl,c,link){
 }
 function buildMsg(c){
   const cfg=getLineCfg();
-  return fillTpl(cfg.template||DEFAULT_LINE_TPL,c,cfg.link||PUBLIC_SITE);
+  return fillTpl(cfg.template||DEFAULT_LINE_TPL,c,cfg.link||ADMIN_SITE);
 }
 function notifyLine(c){
   const cfg=getLineCfg();
@@ -828,7 +829,7 @@ exportBtn.addEventListener("click",()=>{
 /* ====== LINE 設定 ====== */
 (function(){const c=getLineCfg();
   line_token.value=c.token||"";line_to.value=c.to||"";
-  line_link.value=c.link||PUBLIC_SITE;
+  line_link.value=c.link||ADMIN_SITE;
   line_tpl.value=(c.template!==undefined&&c.template!=="")?c.template:DEFAULT_LINE_TPL;
 })();
 saveLine.addEventListener("click",async ()=>{
