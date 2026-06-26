@@ -635,7 +635,7 @@ function renderList(){
       <td>${esc(c.handle||"—")}</td>
       <td>${esc(c.method||"—")}</td>
       <td><span class="tag ${c.status}">${c.status==="done"?"已處理":"待處理"}</span></td>
-      <td><button class="btn sm ghost" onclick="openCase(${idx})">${isAdmin?"處理":"檢視"}</button></td>
+      <td style="white-space:nowrap"><button class="btn sm ghost" onclick="openCase(${idx})">${isAdmin?"處理":"檢視"}</button>${isAdmin?` <button class="btn sm" style="background:var(--danger);color:#fff" onclick="delCase(${idx})">刪除</button>`:""}</td>
     </tr>`;
   }).join("");
 }
@@ -732,7 +732,7 @@ function openCase(idx){
     <h2>${esc(c.caseNo)}　<span class="tag ${c.status}">${c.status==="done"?"已處理":"待處理"}</span></h2>
     ${isAdmin?adminDetail:storeDetail}
     <label style="display:block;margin-top:14px">附件照片 / 影片</label>${mediaHtml}
-    ${isAdmin?`<div class="btn-row"><button class="btn" onclick="saveCase(${idx})">儲存</button></div>`
+    ${isAdmin?`<div class="btn-row"><button class="btn" onclick="saveCase(${idx})">儲存</button><button class="btn" style="background:var(--danger)" onclick="delCase(${idx})">刪除案件</button></div>`
       :`<p class="hint" style="margin-top:10px">切換為「指定對象」角色才能編輯與處理。</p>`}`);
 }
 /* 詳情頁（管理）改品名 → 自動帶出對應料號；選「其他」可自行輸入 */
@@ -770,6 +770,19 @@ async function saveCase(idx){
   if(!save()){toast("⚠ 儲存失敗：本機空間已滿");return;}
   refreshAll();closeModal();
   toast("已更新　"+c.caseNo);
+}
+/* 刪除案件（管理）：確認後刪雲端＋本機，立即更新清單 */
+async function delCase(idx){
+  const c=cases[idx];
+  if(!confirm("確定刪除案件 "+c.caseNo+"（"+(c.store||"")+" / "+(c.name||"")+"）？\n此動作無法復原。"))return;
+  if(API_URL){
+    try{ await api("delete",{caseNo:c.caseNo}); }
+    catch(e){ toast("⚠ 雲端刪除失敗："+e.message); return; }
+  }
+  cases.splice(idx,1); save();
+  closeModal(); renderList();
+  if(document.getElementById("view-dashboard").classList.contains("active"))renderDash();
+  toast("已刪除　"+c.caseNo);
 }
 function showQuotaError(){
   showModal(`<button class="close-x" onclick="closeModal()">×</button>
