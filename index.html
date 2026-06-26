@@ -187,15 +187,12 @@
 </nav>
 
 <main>
-  <!-- ===== 進入畫面（兩個登入入口）===== -->
-  <section class="view active" id="view-gate">
-    <div class="card" style="max-width:460px;margin:48px auto;text-align:center">
-      <h2 style="font-size:20px">門市物料異常回報系統</h2>
-      <p class="hint" style="margin:8px 0 24px">請選擇身分進入</p>
-      <button class="btn" id="enterStore" style="width:100%;padding:16px;font-size:16px">🏪　門市夥伴 · 異常回報</button>
-      <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--line)">
-        <a href="#" id="enterAdmin" style="font-size:13px;color:var(--muted);text-decoration:none">🔒 管理人員登入 →</a>
-      </div>
+  <!-- ===== 管理登入鎖定畫面（僅管理頁 admin.html / #admin 使用）===== -->
+  <section class="view" id="view-locked">
+    <div class="card" style="max-width:420px;margin:48px auto;text-align:center">
+      <h2 style="font-size:20px">管理人員登入</h2>
+      <p class="hint" style="margin:8px 0 20px">本頁僅供管理人員使用</p>
+      <button class="btn" id="lockedLogin" style="width:100%">登入</button>
     </div>
   </section>
 
@@ -901,19 +898,19 @@ function applyRoleUI(){
     :"門市夥伴可檢視自己回報的案件狀態（處理欄位唯讀）。";
 }
 function gotoTab(tab){const btn=document.querySelector(`nav button[data-tab="${tab}"]`);if(btn)btn.click();}
-/* 進入畫面（尚未選身分）：隱藏導覽與功能，只顯示身分選擇 */
-function showGate(){
+/* 管理頁未登入：鎖定畫面（只在 admin.html / #admin 使用）*/
+function showLocked(){
   role=""; adminPass="";
   document.getElementById("nav").style.display="none";
   sessionBar.style.display="none";
   document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
-  document.getElementById("view-gate").classList.add("active");
+  document.getElementById("view-locked").classList.add("active");
 }
-/* 門市夥伴入口：只開放異常回報，看不到管理功能 */
+/* 門市頁：直接進異常回報，無任何管理入口 */
 function enterStoreMode(){
   role="store"; adminPass="";
   document.getElementById("nav").style.display="";
-  sessionBar.style.display="flex"; whoami.textContent="🏪 門市夥伴";
+  sessionBar.style.display="none";
   applyRoleUI(); gotoTab("report");
 }
 /* 管理人員入口（密碼驗證成功後呼叫）*/
@@ -948,9 +945,8 @@ async function submitAdminLogin(){
     if(er)er.style.display="block"; // 未設定雲端 API_URL 時無法驗證管理密碼
   }
 }
-document.getElementById("enterStore").addEventListener("click",enterStoreMode);
-document.getElementById("enterAdmin").addEventListener("click",e=>{e.preventDefault();openAdminLogin();});
-document.getElementById("logoutBtn").addEventListener("click",()=>{cases=load();showGate();});
+document.getElementById("lockedLogin").addEventListener("click",openAdminLogin);
+document.getElementById("logoutBtn").addEventListener("click",()=>{cases=load();showLocked();});
 nav.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   nav.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
   b.classList.add("active");
@@ -1022,7 +1018,9 @@ if(!cases.length){
   demo.sort((a,b)=>a.date<b.date?-1:1).forEach(d=>{const base=ymd(d.date),key=d.store+base;counter[key]=(counter[key]||0)+1;d.caseNo=d.store+base+pad3(counter[key])});
   cases=demo;save();
 }
-showGate();
+/* 入口判斷：admin.html 會導到 index.html#admin → 走管理登入；否則為門市頁直接進回報 */
+if((location.hash||"").toLowerCase()==="#admin"){ showLocked(); openAdminLogin(); }
+else { enterStoreMode(); }
 loadStores();
 loadProducts();
 </script>
