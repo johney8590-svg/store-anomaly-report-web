@@ -620,11 +620,6 @@ function filtered(){
     let x=a[sortKey]||"",y=b[sortKey]||"";return x<y?-sortDir:x>y?sortDir:0;
   });
 }
-function inlineSel(field,idx,val,opts){
-  return `<select class="inline-sel" onchange="quickSet(${idx},'${field}',this.value)">`+
-    `<option value="">—</option>`+
-    opts.map(o=>`<option ${val===o?"selected":""}>${o}</option>`).join("")+`</select>`;
-}
 function renderList(){
   const rows=filtered();
   if(!rows.length){caseBody.innerHTML=`<tr><td colspan="11"><div class="empty">尚無符合的案件</div></td></tr>`;return}
@@ -636,26 +631,12 @@ function renderList(){
       <td>${esc(c.name)}</td><td>${esc(c.qty)}</td>
       <td style="max-width:180px">${esc(c.desc)}</td>
       <td>${c.media.length?`📎${c.media.length}`:"—"}</td>
-      <td>${isAdmin?inlineSel("handle",idx,c.handle,HANDLE_OPTS):esc(c.handle||"—")}</td>
-      <td>${isAdmin?inlineSel("method",idx,c.method,METHOD_OPTS):esc(c.method||"—")}</td>
+      <td>${esc(c.handle||"—")}</td>
+      <td>${esc(c.method||"—")}</td>
       <td><span class="tag ${c.status}">${c.status==="done"?"已處理":"待處理"}</span></td>
       <td><button class="btn sm ghost" onclick="openCase(${idx})">${isAdmin?"處理":"檢視"}</button></td>
     </tr>`;
   }).join("");
-}
-/* 清單內即時設定 異常品處理／處理方式，立即存雲端並更新狀態 */
-async function quickSet(idx,field,value){
-  const c=cases[idx];
-  c[field]=value;
-  c.status=(c.handle&&c.method&&c.result)?"done":"pend";
-  if(API_URL){
-    try{ await api("update",{caseNo:c.caseNo,handle:c.handle,method:c.method,status:c.status}); }
-    catch(e){ console.warn("雲端更新失敗",e); toast("⚠ 雲端更新失敗，已暫存本機"); }
-  }
-  save();
-  renderList();
-  if(document.getElementById("view-dashboard").classList.contains("active"))renderDash();
-  toast("已更新　"+c.caseNo);
 }
 
 /* ====== 案件詳情 / 處理 ====== */
