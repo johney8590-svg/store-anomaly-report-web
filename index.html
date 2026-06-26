@@ -122,6 +122,7 @@
   .step .num{position:absolute;left:0;top:0;background:var(--primary);color:#fff;width:22px;
     height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
   .scrollwrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:10px}
+  .inline-sel{padding:5px 6px;font-size:12px;min-width:104px;border:1px solid #cdd5d0;border-radius:6px;background:#fff}
 
   /* ===== 手機版優化（門市夥伴主要在手機操作）===== */
   @media (max-width:600px){
@@ -279,6 +280,7 @@
             <th data-sort="caseNo">案件編號</th><th data-sort="date">日期</th>
             <th data-sort="store">門市</th><th data-sort="name">品名</th>
             <th data-sort="qty">數量</th><th>狀況</th><th>媒體</th>
+            <th data-sort="handle">異常品處理</th><th data-sort="method">處理方式</th>
             <th data-sort="status">狀態</th><th>操作</th>
           </tr></thead>
           <tbody id="caseBody"></tbody>
@@ -621,9 +623,15 @@ function filtered(){
     let x=a[sortKey]||"",y=b[sortKey]||"";return x<y?-sortDir:x>y?sortDir:0;
   });
 }
+function inlineSel(field,idx,val,opts){
+  return `<select class="inline-sel" onchange="quickSet(${idx},'${field}',this.value)">`+
+    `<option value="">—</option>`+
+    opts.map(o=>`<option ${val===o?"selected":""}>${o}</option>`).join("")+`</select>`;
+}
 function renderList(){
   const rows=filtered();
-  if(!rows.length){caseBody.innerHTML=`<tr><td colspan="9"><div class="empty">尚無符合的案件</div></td></tr>`;return}
+  if(!rows.length){caseBody.innerHTML=`<tr><td colspan="11"><div class="empty">尚無符合的案件</div></td></tr>`;return}
+  const isAdmin=role==="admin";
   caseBody.innerHTML=rows.map(c=>{
     const idx=cases.indexOf(c);
     return `<tr>
@@ -631,10 +639,26 @@ function renderList(){
       <td>${esc(c.name)}</td><td>${esc(c.qty)}</td>
       <td style="max-width:180px">${esc(c.desc)}</td>
       <td>${c.media.length?`📎${c.media.length}`:"—"}</td>
+      <td>${isAdmin?inlineSel("handle",idx,c.handle,HANDLE_OPTS):esc(c.handle||"—")}</td>
+      <td>${isAdmin?inlineSel("method",idx,c.method,METHOD_OPTS):esc(c.method||"—")}</td>
       <td><span class="tag ${c.status}">${c.status==="done"?"已處理":"待處理"}</span></td>
-      <td><button class="btn sm ghost" onclick="openCase(${idx})">${role==="admin"?"處理":"檢視"}</button></td>
+      <td><button class="btn sm ghost" onclick="openCase(${idx})">${isAdmin?"處理":"檢視"}</button></td>
     </tr>`;
   }).join("");
+}
+/* 清單內即時設定 異常品處理／處理方式，立即存雲端並更新狀態 */
+async function quickSet(idx,field,value){
+  const c=cases[idx];
+  c[field]=value;
+  c.status=(c.handle&&c.method&&c.result)?"done":"pend";
+  if(API_URL){
+    try{ await api("update",{caseNo:c.caseNo,handle:c.handle,method:c.method,status:c.status}); }
+    catch(e){ console.warn("雲端更新失敗",e); toast("⚠ 雲端更新失敗，已暫存本機"); }
+  }
+  save();
+  renderList();
+  if(document.getElementById("view-dashboard").classList.contains("active"))renderDash();
+  toast("已更新　"+c.caseNo);
 }
 
 /* ====== 案件詳情 / 處理 ====== */
