@@ -253,6 +253,10 @@
         <div class="media-grid" id="mediaPreview"></div>
       </div>
 
+      <!-- 蜜罐：人類看不到也不會填；機器人填了就會被後端忽略 -->
+      <input type="text" id="f_hp" name="company" autocomplete="off" tabindex="-1" aria-hidden="true"
+             style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0">
+
       <div class="btn-row">
         <button class="btn" id="submitBtn">送出回報並通知 LINE</button>
         <button class="btn sec" id="resetBtn">清空</button>
@@ -546,6 +550,7 @@ submitBtn.addEventListener("click",async ()=>{
     try{
       const lc=getLineCfg();
       const saved=await api("create",{
+        hp:f_hp.value,
         case:{date:c.date,store:c.store,name:c.name,mat:c.mat,mfg:c.mfg,exp:c.exp,qty:c.qty,cls:c.cls,desc:c.desc},
         media:media.map(m=>({name:m.name,type:m.type,data:m.url})),
         line:{token:lc.token||"",to:lc.to||""}
@@ -554,6 +559,8 @@ submitBtn.addEventListener("click",async ()=>{
       resetForm();refreshAll();
       toast("已送出　"+saved.caseNo+"（已存雲端並推播 LINE）");
     }catch(e){
+      // 後端擋下(送太快/被忽略)→ 直接提示，不暫存本機，避免重複
+      if(String(e&&e.message).indexOf("送太快")>=0){ toast(e.message); return; }
       console.warn("雲端送出失敗，暫存本機",e);
       cases.unshift(c);
       if(!save()){cases.shift();showQuotaError();}
