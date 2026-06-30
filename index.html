@@ -174,7 +174,7 @@
   </div>
   <div id="sessionBar" style="display:none;align-items:center;gap:10px">
     <span id="whoami" style="font-size:13px;opacity:.92;font-weight:600"></span>
-    <button class="btn sm ghost" id="logoutBtn">登出</button>
+    <button class="btn sm ghost" id="logoutBtn">離開後台</button>
   </div>
 </header>
 
@@ -948,7 +948,7 @@ async function submitAdminLogin(){
   }
 }
 document.getElementById("lockedLogin").addEventListener("click",openAdminLogin);
-document.getElementById("logoutBtn").addEventListener("click",()=>{cases=load();showLocked();});
+document.getElementById("logoutBtn").addEventListener("click",()=>{location.href="index.html";});
 nav.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   nav.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
   b.classList.add("active");
@@ -1020,8 +1020,8 @@ if(!cases.length){
   demo.sort((a,b)=>a.date<b.date?-1:1).forEach(d=>{const base=ymd(d.date),key=d.store+base;counter[key]=(counter[key]||0)+1;d.caseNo=d.store+base+pad3(counter[key])});
   cases=demo;save();
 }
-/* 入口判斷：admin.html 會導到 index.html#admin → 走管理登入；否則為門市頁直接進回報 */
-if((location.hash||"").toLowerCase()==="#admin"){ showLocked(); openAdminLogin(); }
+/* 入口判斷：admin.html 會導到 index.html#admin → 直接進管理後台(目前未設密碼)；否則為門市頁直接進回報 */
+if((location.hash||"").toLowerCase()==="#admin"){ adminPass=""; enterAdminMode(); syncFromCloud(); }
 else { enterStoreMode(); }
 loadStores();
 loadProducts();
