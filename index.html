@@ -342,7 +342,7 @@
       <div class="grid">
         <div class="full"><label>Channel access token（長期）<span style="font-weight:400;color:var(--muted)">　← 一長串英數字，非 32 碼的 Channel secret</span></label><input type="text" id="line_token" placeholder="LINE Developers → Messaging API → Channel access token (long-lived)"></div>
         <div class="full"><label>推播目標 ID（使用者 userId 或群組 groupId，可多個用逗號分隔）<span style="font-weight:400;color:var(--muted)">　← 留空＝改用「廣播」發給所有加官方帳號好友的人</span></label><input type="text" id="line_to" placeholder="例：Uxxxxxxxx, Cxxxxxxxx（留空則廣播）"></div>
-        <div class="full"><label>「連結」要導向的網址（{link} 代入值）</label><input type="text" id="line_link" placeholder="案件清單網址"></div>
+        <div class="full"><label>通知「連結」導向（已固定為管理入口 admin.html，不可改）</label><input type="text" id="line_link" readonly style="background:#f0f2f1;color:#6b7872"></div>
         <div class="full"><label>通知內容範本</label>
           <textarea id="line_tpl" style="min-height:200px;font-family:inherit"></textarea>
           <div class="pill-note" style="margin-top:8px">可用代入欄位：<code>{caseNo}</code> 案件編號 · <code>{name}</code> 品名 · <code>{qty}</code> 異常數量 · <code>{mat}</code> 異常料號 · <code>{mfg}</code> 製造日期 · <code>{exp}</code> 有效日期 · <code>{date}</code> 異常日期 · <code>{desc}</code> 異常說明 · <code>{cls}</code> 異常分類 · <code>{store}</code> 門市 · <code>{link}</code> 連結。製造／有效日期沒填會自動留空。</div>
@@ -849,7 +849,7 @@ exportBtn.addEventListener("click",()=>{
 /* ====== LINE 設定 ====== */
 (function(){const c=getLineCfg();
   line_token.value=c.token||"";line_to.value=c.to||"";
-  line_link.value=c.link||ADMIN_SITE;
+  line_link.value=ADMIN_SITE;
   line_tpl.value=(c.template!==undefined&&c.template!=="")?c.template:DEFAULT_LINE_TPL;
 })();
 saveLine.addEventListener("click",async ()=>{
