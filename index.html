@@ -110,6 +110,13 @@
   .lightbox .lb-open{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
     background:rgba(255,255,255,.92);color:#26302b;padding:8px 16px;border-radius:20px;
     font-size:13px;text-decoration:none;font-weight:600}
+  .lightbox .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;
+    border:none;border-radius:50%;background:rgba(255,255,255,.85);color:#26302b;font-size:30px;
+    line-height:1;cursor:pointer;z-index:2}
+  .lightbox .lb-nav:hover{background:#fff}
+  .lightbox .lb-prev{left:14px}.lightbox .lb-next{right:14px}
+  .lightbox .lb-count{position:absolute;top:16px;left:50%;transform:translateX(-50%);color:#fff;
+    font-size:14px;background:rgba(0,0,0,.45);padding:4px 12px;border-radius:20px;z-index:2}
   .modal-media img,.modal-media video{max-width:100%;border-radius:8px;margin-bottom:10px}
   .close-x{float:right;cursor:pointer;font-size:22px;color:#999;border:none;background:none}
   .empty{text-align:center;color:var(--muted);padding:40px 0;font-size:14px}
@@ -271,6 +278,7 @@
     <div class="card">
       <h2>案件清單</h2>
       <p class="hint" id="roleHintList">指定對象可在此填寫「異常品處理 / 處理方式 / 處理結果」。</p>
+      <div class="stat-row" id="listStats" style="margin-bottom:16px"></div>
       <div class="filter-bar">
         <div><label>搜尋</label><input type="text" id="q_text" placeholder="案號 / 門市 / 品名 / 狀況"></div>
         <div><label>狀態</label><select id="q_status"><option value="">全部</option><option value="pend">待處理</option><option value="doing">處理中</option><option value="done">已處理</option></select></div>
@@ -375,7 +383,10 @@
 <!-- 放大檢視 lightbox -->
 <div class="lightbox" id="lightbox">
   <button class="lb-close" onclick="closeLightbox()">×</button>
+  <div class="lb-count" id="lbCount"></div>
+  <button class="lb-nav lb-prev" onclick="lbNav(-1)">‹</button>
   <div id="lightboxBody"></div>
+  <button class="lb-nav lb-next" onclick="lbNav(1)">›</button>
 </div>
 
 <script>
@@ -630,7 +641,21 @@ function filtered(){
     let x=a[sortKey]||"",y=b[sortKey]||"";return x<y?-sortDir:x>y?sortDir:0;
   });
 }
+/* 案件清單上方的統計摘要（全部案件） */
+function renderListStats(){
+  const el=document.getElementById("listStats"); if(!el)return;
+  const d=cases;
+  const pend=d.filter(c=>c.status==="pend").length;
+  const doing=d.filter(c=>c.status==="doing").length;
+  const done=d.filter(c=>c.status==="done").length;
+  el.innerHTML=`
+    <div class="stat"><div class="n">${d.length}</div><div class="l">總案件</div></div>
+    <div class="stat warn"><div class="n">${pend}</div><div class="l">待處理</div></div>
+    <div class="stat info"><div class="n">${doing}</div><div class="l">處理中</div></div>
+    <div class="stat ok"><div class="n">${done}</div><div class="l">已處理</div></div>`;
+}
 function renderList(){
+  renderListStats();
   const rows=filtered();
   if(!rows.length){caseBody.innerHTML=`<tr><td colspan="11"><div class="empty">尚無符合的案件</div></td></tr>`;return}
   const isAdmin=role==="admin";
@@ -659,8 +684,10 @@ function driveId(m){
 }
 /* 縮圖網址：雲端用 Drive thumbnail 端點（穩定可內嵌）；本機暫存用 dataURL */
 function mediaThumb(m,w){const id=driveId(m);return id?("https://drive.google.com/thumbnail?id="+id+"&sz=w"+(w||400)):(m.url||"");}
-function openLightbox(i){
-  const m=window.__lbMedia&&window.__lbMedia[i];if(!m)return;
+function openLightbox(i){ window.__lbIdx=i; renderLightbox(); lightbox.classList.add("show"); }
+function lbNav(d){ const a=window.__lbMedia||[]; if(a.length<2)return; window.__lbIdx=((window.__lbIdx||0)+d+a.length)%a.length; renderLightbox(); }
+function renderLightbox(){
+  const a=window.__lbMedia||[], i=window.__lbIdx||0, m=a[i]; if(!m)return;
   const id=driveId(m);let inner;
   if(m.type==="video"){
     inner=id
@@ -671,7 +698,11 @@ function openLightbox(i){
     inner=`<img src="${big}">`;
   }
   if(m.view)inner+=`<a class="lb-open" href="${m.view}" target="_blank" rel="noopener">在 Google Drive 開啟原檔</a>`;
-  lightboxBody.innerHTML=inner;lightbox.classList.add("show");
+  lightboxBody.innerHTML=inner;
+  const multi=a.length>1;
+  lbCount.textContent=multi?((i+1)+" / "+a.length):"";
+  document.querySelector(".lb-prev").style.display=multi?"":"none";
+  document.querySelector(".lb-next").style.display=multi?"":"none";
 }
 function closeLightbox(){lightbox.classList.remove("show");lightboxBody.innerHTML="";}
 lightbox.addEventListener("click",e=>{if(e.target===lightbox)closeLightbox()});
@@ -739,6 +770,7 @@ function openCase(idx){
 
   showModal(`<button class="close-x" onclick="closeModal()">×</button>
     <h2>${esc(c.caseNo)}　<span class="tag ${c.status}">${statusText(c.status)}</span></h2>
+    <div class="btn-row" style="margin:6px 0 12px"><button class="btn sec sm" onclick="copyCaseInfo(${idx})">📋 複製案件資訊</button></div>
     ${isAdmin?adminDetail:storeDetail}
     <label style="display:block;margin-top:14px">附件照片 / 影片</label>${mediaHtml}
     ${isAdmin?`<div class="btn-row"><button class="btn" onclick="saveCase(${idx})">儲存</button><button class="btn" style="background:var(--danger)" onclick="delCase(${idx})">刪除案件</button></div>`
@@ -793,6 +825,35 @@ async function delCase(idx){
   closeModal(); renderList();
   if(document.getElementById("view-dashboard").classList.contains("active"))renderDash();
   toast("已刪除　"+c.caseNo);
+}
+/* 一鍵複製案件資訊到剪貼簿 */
+function copyCaseInfo(idx){
+  const c=cases[idx];
+  const t=[
+    "案件編號："+c.caseNo,
+    "門市："+c.store,
+    "日期："+c.date,
+    "品名："+c.name+(c.mat?"（"+c.mat+"）":""),
+    "異常數量："+c.qty,
+    "異常分類："+(c.cls||"—"),
+    "製造日期："+(c.mfg||"—"),
+    "有效日期："+(c.exp||"—"),
+    "異常說明："+c.desc,
+    "異常品處理："+(c.handle||"—"),
+    "處理方式："+(c.method||"—"),
+    "處理結果："+(c.result||"—"),
+    "狀態："+statusText(c.status)
+  ].join("\n");
+  const done=()=>toast("已複製案件資訊");
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(done).catch(()=>fallbackCopy(t,done));
+  }else fallbackCopy(t,done);
+}
+function fallbackCopy(t,cb){
+  const ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.left="-9999px";
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand("copy");cb&&cb();}catch(e){toast("複製失敗，請手動複製");}
+  document.body.removeChild(ta);
 }
 function showQuotaError(){
   showModal(`<button class="close-x" onclick="closeModal()">×</button>
@@ -1008,9 +1069,15 @@ function statusText(s){return s==="done"?"已處理":s==="doing"?"處理中":"�
 function showModal(html){modalBox.innerHTML=html;modalBg.classList.add("show")}
 function closeModal(){modalBg.classList.remove("show")}
 modalBg.addEventListener("click",e=>{if(e.target===modalBg)closeModal()});
-document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;
-  if(lightbox.classList.contains("show"))closeLightbox();
-  else if(modalBg.classList.contains("show"))closeModal();});
+document.addEventListener("keydown",e=>{
+  if(lightbox.classList.contains("show")){
+    if(e.key==="Escape")closeLightbox();
+    else if(e.key==="ArrowLeft")lbNav(-1);
+    else if(e.key==="ArrowRight")lbNav(1);
+    return;
+  }
+  if(e.key==="Escape"&&modalBg.classList.contains("show"))closeModal();
+});
 let toastT;function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2600)}
 function refreshAll(){renderList();updateCasePreview();if(document.getElementById("view-dashboard").classList.contains("active"))renderDash()}
 
