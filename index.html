@@ -117,6 +117,10 @@
   .lightbox .lb-prev{left:14px}.lightbox .lb-next{right:14px}
   .lightbox .lb-count{position:absolute;top:16px;left:50%;transform:translateX(-50%);color:#fff;
     font-size:14px;background:rgba(0,0,0,.45);padding:4px 12px;border-radius:20px;z-index:2}
+  .lightbox .lb-bar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:2}
+  .lightbox .lb-btn{background:rgba(255,255,255,.92);color:#26302b;padding:8px 16px;border-radius:20px;
+    font-size:13px;text-decoration:none;font-weight:600;cursor:pointer}
+  .lightbox .lb-btn:hover{background:#fff}
   .modal-media img,.modal-media video{max-width:100%;border-radius:8px;margin-bottom:10px}
   .close-x{float:right;cursor:pointer;font-size:22px;color:#999;border:none;background:none}
   .empty{text-align:center;color:var(--muted);padding:40px 0;font-size:14px}
@@ -398,7 +402,7 @@ const CLASS_OPTS = ["包裝問題","異物混入","性狀異常","重量異常",
    日後改動只需編輯後端試算表的 products 分頁，全門市下拉即時同步。 */
 let PRODUCTS = {"UG 22oz-90打凸A白底雙層杯":"M01030193","UG 16oz-90打凸A白底雙層杯":"M01030195","PP-90注塑梅花分體蓋 白色":"M01020297","水蜜桃醬":"F04020086","稀釋版西柚糖漿":"F04020088","朱槿風味普洱紅茶":"F01010104","牛皮色紙漿二杯架":"M01010155","UG 牛皮色紙漿四杯架":"M01010156","蜜燕麥":"F04040132","茉香綠茶":"F01010101","桂花烏龍":"F01010102","鐵觀音":"F01010103","金絲紅茶":"F01010108","糯米香風味綠茶":"F01010107","山茶風味紅烏龍（B)":"F01010112","UG鮮乳":"F07020048","櫻島家鮮奶":"F07020041","歐登堡動物性鮮奶油":"F07020042","冰伯朗":"F07020043","紅西柚果粒罐頭":"F04030108","原味果凍粉":"F03010256","台糖精製細砂":"F04010028","靜岡抹茶粉360":"F03010296","綠哈密瓜風味糖漿":"F04020087","桂花糖漿":"F04010069","冷凍檸檬原汁":"F04020101","UG杯膜":"M01020278","UG杯膜B":"DR12810001","單杯魔術貼不織布提袋":"M01040042","雙杯無紡布保溫袋":"M01040043","四杯魔術貼不織布保冷袋":"M01040057","Mosa氣彈8.5g":"M05010940","電子發票":"M08010023"};
 const HANDLE_OPTS = ["門市報廢","轉回總部","廠商至門市回收","詢問廠商","─"];
-const METHOD_OPTS = ["換貨","折讓","待採購處理","其他","─"];
+const METHOD_OPTS = ["換貨","折讓","待採購處理","待廠商回覆","其他","─"];
 const LS_KEY="store_anomaly_cases_v1", LS_LINE="store_anomaly_line_v1";
 const OTHER_OPT="__other__"; // 品名選單「其他（自行輸入）」的值
 const PUBLIC_SITE="https://johney8590-svg.github.io/store-anomaly-report-web/";
@@ -697,7 +701,15 @@ function renderLightbox(){
     const big=id?("https://drive.google.com/thumbnail?id="+id+"&sz=w1600"):m.url;
     inner=`<img src="${big}">`;
   }
-  if(m.view)inner+=`<a class="lb-open" href="${m.view}" target="_blank" rel="noopener">在 Google Drive 開啟原檔</a>`;
+  // 底部：下載 ＋ 在 Drive 開啟（雲端檔用 Drive 下載網址；本機暫存用 dataURL＋download）
+  if(id){
+    inner+=`<div class="lb-bar">`+
+      `<a class="lb-btn" href="https://drive.google.com/uc?export=download&id=${id}">⬇ 下載${m.type==="video"?"影片":"照片"}</a>`+
+      (m.view?`<a class="lb-btn" href="${m.view}" target="_blank" rel="noopener">在 Drive 開啟</a>`:"")+
+      `</div>`;
+  }else if(m.url){
+    inner+=`<div class="lb-bar"><a class="lb-btn" href="${m.url}" download="${(m.name||'media').replace(/"/g,'')}">⬇ 下載</a></div>`;
+  }
   lightboxBody.innerHTML=inner;
   const multi=a.length>1;
   lbCount.textContent=multi?((i+1)+" / "+a.length):"";
