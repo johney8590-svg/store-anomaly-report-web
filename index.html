@@ -324,15 +324,18 @@
   <!-- ===== 資料維護 ===== -->
   <section class="view" id="view-data">
     <div class="card">
-      <h2>門市清單維護</h2>
-      <p class="hint">每行一個門市名稱。可用下方欄位快速新增，或直接在框內修改／刪除整行；也可整批貼上匯入。改完按「儲存門市」存到雲端，全門市即時同步。</p>
+      <h2>門市清單維護（含負責督導）</h2>
+      <p class="hint">每行一筆，格式「<b>門市,督導</b>」（也可用 Tab 分隔，方便從 Excel 貼上；督導可留空）。可用下方欄位快速新增，或直接在框內修改／刪除整行。改完按「儲存門市」存到雲端，全門市即時同步。</p>
+      <div class="pill-note" style="margin-bottom:10px">門市／督導主檔＝Google 試算表「<b>門店資料表_UG</b>」（文宣申請／修繕進度／本系統三套共用）。按「🔄 從門店資料表同步」會依主檔<b>新增門市、更新督導</b>，並一併更新另外兩套系統；<b>不會刪除</b>這裡手動加的門市，主檔沒填督導的也會保留這裡填的值。<span id="dm_sync_at"></span></div>
       <div style="display:flex;gap:8px;margin-bottom:10px">
-        <input type="text" id="dm_store_new" placeholder="輸入新門市名稱後按 ＋新增" style="flex:1">
+        <input type="text" id="dm_store_new" placeholder="新門市名稱" style="flex:1">
+        <input type="text" id="dm_sup_new" placeholder="負責督導（可留空）" style="flex:1">
         <button class="btn sec sm" id="dmAddStore" style="white-space:nowrap">＋ 新增</button>
       </div>
-      <textarea id="dm_stores" style="min-height:240px;font-family:inherit" placeholder="一行一個門市名稱"></textarea>
+      <textarea id="dm_stores" style="min-height:240px;font-family:inherit" placeholder="門市,督導　例：台中大里,林凱琳 Liisa"></textarea>
       <div class="btn-row">
         <button class="btn" id="dmSaveStores">儲存門市</button>
+        <button class="btn sec" id="dmSyncStores">🔄 從門店資料表同步</button>
         <button class="btn sec" id="dmReloadStores">重新載入</button>
       </div>
     </div>
@@ -470,9 +473,27 @@ function buildStoreSelects(){
   if(a) f_store.value=a;
   q_store.value=b||"";
 }
+/* 門市→負責督導（主檔＝Google 試算表「門店資料表_UG」，也可在資料維護手動增修）*/
+let STORE_SUP={}, STORE_SYNC_AT="";
+function normStoreName(s){return String(s==null?"":s).trim().replace(/店$/,"")}
+function supOfStore(s){
+  if(!s)return"";
+  if(STORE_SUP[s])return STORE_SUP[s];
+  const k=Object.keys(STORE_SUP).find(k=>normStoreName(k)===normStoreName(s));
+  return k?STORE_SUP[k]:"";
+}
 /* 從後端門市主檔載入，覆蓋內建清單（離線時沿用內建） */
 async function loadStores(){
   if(!API_URL)return;
+  try{
+    const d=await api("storeDir");                     // 門市＋督導
+    if(d&&Array.isArray(d.list)&&d.list.length){
+      STORES=d.list.map(r=>String(r.name));
+      STORE_SUP={}; d.list.forEach(r=>{ STORE_SUP[r.name]=String(r.sup||""); });
+      STORE_SYNC_AT=d.syncAt||"";
+      buildStoreSelects(); return;
+    }
+  }catch(e){console.warn("門市／督導對照載入失敗，改用舊版門市清單",e);}
   try{
     const list=await api("stores");
     if(Array.isArray(list)&&list.length){ STORES=list.map(String); buildStoreSelects(); }
@@ -1039,15 +1060,54 @@ nav.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
 }));
 
 /* ====== 資料維護（門市 / 品名主檔）====== */
-function dmFillStores(){ if(window.dm_stores) dm_stores.value=STORES.join("\n"); }
+function dmFillStores(){
+  if(!window.dm_stores)return;
+  dm_stores.value=STORES.map(nm=>{const sup=STORE_SUP[nm]||"";return sup?(nm+","+sup):nm}).join("\n");
+  const at=document.getElementById("dm_sync_at");
+  if(at)at.textContent=STORE_SYNC_AT?("　最後同步："+String(STORE_SYNC_AT).slice(0,16).replace("T"," ")):"";
+}
+/* 把文字框解析成 [[門市,督導],...]（支援逗號或 Tab 分隔）*/
+function dmParseStores(){
+  const seen={}, rows=[];
+  dm_stores.value.split(/\r?\n/).forEach(line=>{
+    const t=line.trim(); if(!t)return;
+    const p=t.split(/\t|,/);
+    const name=String(p[0]||"").replace(/^"|"$/g,"").trim();
+    const sup=String(p[1]||"").replace(/^"|"$/g,"").replace(/\s+/g," ").trim();
+    if(!name||seen[name])return;
+    seen[name]=1; rows.push([name,sup]);
+  });
+  return rows;
+}
 function dmFillProducts(){ if(window.dm_products) dm_products.value=Object.keys(PRODUCTS).map(n=>n+","+(PRODUCTS[n]||"")).join("\n"); }
 dmSaveStores.addEventListener("click",async ()=>{
-  const seen={}, arr=dm_stores.value.split(/\r?\n/).map(s=>s.trim()).filter(s=>s&&!seen[s]&&(seen[s]=true));
-  if(!arr.length){toast("門市清單不可全空");return;}
+  const rows=dmParseStores();
+  if(!rows.length){toast("門市清單不可全空");return;}
   dmSaveStores.disabled=true;
-  try{ await api("saveStores",{stores:arr}); STORES=arr; buildStoreSelects(); dmFillStores(); toast("門市已儲存（"+arr.length+" 間）"); }
+  try{
+    await api("saveStores",{stores:rows});
+    STORES=rows.map(r=>r[0]); STORE_SUP={}; rows.forEach(r=>{STORE_SUP[r[0]]=r[1]});
+    buildStoreSelects(); dmFillStores();
+    toast("門市已儲存（"+rows.length+" 間）");
+  }
   catch(e){ toast("⚠ 儲存失敗："+e.message); }
   finally{ dmSaveStores.disabled=false; }
+});
+/* 從「門店資料表_UG」同步門市／督導，並連動另外兩套系統 */
+dmSyncStores.addEventListener("click",async ()=>{
+  dmSyncStores.disabled=true; const old=dmSyncStores.textContent; dmSyncStores.textContent="同步中…";
+  try{
+    const r=await api("syncStores");
+    await loadStores(); dmFillStores();
+    const add=(r&&r.added)||[], chg=(r&&r.supervisorChanged)||[], peers=(r&&r.peers)||[];
+    const okPeers=peers.filter(p=>p&&p.ok).length;
+    toast("✅ 同步完成："+((r&&r.stores)||STORES.length)+" 家門市／新增 "+add.length+"／督導更新 "+chg.length+
+          (peers.length?("（另 "+okPeers+"/"+peers.length+" 套系統已連動）"):""));
+    if(add.length)  console.log("新增門市：",add);
+    if(chg.length)  console.log("督導更新：",chg);
+    if(peers.length)console.log("連動結果：",peers);
+  }catch(e){ toast("⚠ 同步失敗："+e.message); }
+  finally{ dmSyncStores.disabled=false; dmSyncStores.textContent=old; }
 });
 dmSaveProducts.addEventListener("click",async ()=>{
   const rows=dm_products.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(line=>{
@@ -1064,14 +1124,15 @@ dmSaveProducts.addEventListener("click",async ()=>{
 });
 function dmAddStoreLine(){
   const v=dm_store_new.value.trim(); if(!v)return;
-  const cur=dm_stores.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  if(cur.includes(v)){toast("門市已存在："+v);dm_store_new.value="";return;}
-  dm_stores.value=(dm_stores.value.replace(/\s*$/,"")+"\n"+v).replace(/^\n/,"");
-  dm_store_new.value=""; dm_store_new.focus();
+  const sup=(window.dm_sup_new?dm_sup_new.value.trim():"");
+  if(dmParseStores().some(r=>r[0]===v)){toast("門市已存在："+v);dm_store_new.value="";return;}
+  dm_stores.value=(dm_stores.value.replace(/\s*$/,"")+"\n"+v+(sup?(","+sup):"")).replace(/^\n/,"");
+  dm_store_new.value=""; if(window.dm_sup_new)dm_sup_new.value=""; dm_store_new.focus();
   toast("已加入「"+v+"」，記得按「儲存門市」");
 }
 dmAddStore.addEventListener("click",dmAddStoreLine);
 dm_store_new.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();dmAddStoreLine();}});
+dm_sup_new.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();dmAddStoreLine();}});
 dmReloadStores.addEventListener("click",async ()=>{ await loadStores(); dmFillStores(); toast("已重新載入門市"); });
 dmReloadProducts.addEventListener("click",async ()=>{ await loadProducts(); dmFillProducts(); toast("已重新載入品名"); });
 
