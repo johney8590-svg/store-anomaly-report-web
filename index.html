@@ -287,6 +287,7 @@
         <div><label>搜尋</label><input type="text" id="q_text" placeholder="案號 / 門市 / 品名 / 狀況"></div>
         <div><label>狀態</label><select id="q_status"><option value="">全部</option><option value="pend">待處理</option><option value="doing">處理中</option><option value="done">已處理</option></select></div>
         <div><label>門市</label><select id="q_store"><option value="">全部門市</option></select></div>
+        <div><label>處理方式</label><select id="q_method"><option value="">全部</option></select></div>
         <div style="flex:0"><button class="btn sec sm" id="exportBtn" style="margin-bottom:1px">匯出 CSV</button></div>
       </div>
       <div class="scrollwrap">
@@ -669,15 +670,17 @@ function notifyLine(c){
 
 /* ====== 清單 ====== */
 let sortKey="createdAt",sortDir=-1;
-[q_text,q_status,q_store].forEach(el=>el.addEventListener("input",renderList));
+q_method.innerHTML="<option value=''>全部</option>"+METHOD_OPTS.filter(o=>o&&o!=="─").map(o=>`<option>${o}</option>`).join("");
+[q_text,q_status,q_store,q_method].forEach(el=>el.addEventListener("input",renderList));
 document.querySelectorAll("#caseTable th[data-sort]").forEach(th=>{
   th.addEventListener("click",()=>{const k=th.dataset.sort;sortDir=(sortKey===k)?-sortDir:1;sortKey=k;renderList()});
 });
 function filtered(){
-  const q=q_text.value.trim().toLowerCase(),st=q_status.value,sv=q_store.value;
+  const q=q_text.value.trim().toLowerCase(),st=q_status.value,sv=q_store.value,mv=q_method.value;
   return cases.filter(c=>{
     if(st && c.status!==st)return false;
     if(sv && c.store!==sv)return false;
+    if(mv && c.method!==mv)return false;
     if(q){const blob=(c.caseNo+c.store+c.name+c.desc+c.qty).toLowerCase();if(!blob.includes(q))return false}
     return true;
   }).sort((a,b)=>{
