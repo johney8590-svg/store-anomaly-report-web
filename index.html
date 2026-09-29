@@ -285,6 +285,7 @@
       <div class="stat-row" id="listStats" style="margin-bottom:16px"></div>
       <div class="filter-bar">
         <div><label>搜尋</label><input type="text" id="q_text" placeholder="案號 / 門市 / 品名 / 狀況"></div>
+        <div><label>回報月份</label><select id="q_rmonth"><option value="">全部月份</option></select></div>
         <div><label>狀態</label><select id="q_status"><option value="">全部</option><option value="pend">待處理</option><option value="doing">處理中</option><option value="done">已處理</option></select></div>
         <div><label>門市</label><select id="q_store"><option value="">全部門市</option></select></div>
         <div><label>處理方式</label><select id="q_method"><option value="">全部</option></select></div>
@@ -293,7 +294,7 @@
       <div class="scrollwrap">
         <table id="caseTable">
           <thead><tr>
-            <th data-sort="caseNo">案件編號</th><th data-sort="date">日期</th>
+            <th data-sort="caseNo">案件編號</th><th data-sort="date">異常日期</th><th data-sort="createdAt">回報日期</th>
             <th data-sort="store">門市</th><th data-sort="name">品名</th>
             <th data-sort="qty">數量</th><th>狀況</th><th>媒體</th>
             <th data-sort="handle">異常品處理</th><th data-sort="method">處理方式</th>
@@ -671,13 +672,29 @@ function notifyLine(c){
 /* ====== 清單 ====== */
 let sortKey="createdAt",sortDir=-1;
 q_method.innerHTML="<option value=''>全部</option>"+METHOD_OPTS.filter(o=>o&&o!=="─").map(o=>`<option>${o}</option>`).join("");
-[q_text,q_status,q_store,q_method].forEach(el=>el.addEventListener("input",renderList));
+/* 回報日期（案件建立時間 createdAt，轉本地時區）；與「異常日期」c.date 不同 */
+function reportYmd(c){
+  const d=c&&c.createdAt?new Date(c.createdAt):null;
+  if(!d||isNaN(d))return "";
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function reportMonth(c){return reportYmd(c).slice(0,7)}
+/* 依現有案件重建回報月份下拉（新到舊），保留目前選取 */
+function refreshMonthSelect(){
+  const cur=q_rmonth.value;
+  const ms=[...new Set(cases.map(reportMonth).filter(Boolean))].sort().reverse();
+  if(cur&&ms.indexOf(cur)<0)ms.unshift(cur);
+  q_rmonth.innerHTML="<option value=''>全部月份</option>"+ms.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}">${y} 年 ${+mo} 月</option>`}).join("");
+  q_rmonth.value=cur;
+}
+[q_text,q_status,q_store,q_method,q_rmonth].forEach(el=>el.addEventListener("input",renderList));
 document.querySelectorAll("#caseTable th[data-sort]").forEach(th=>{
   th.addEventListener("click",()=>{const k=th.dataset.sort;sortDir=(sortKey===k)?-sortDir:1;sortKey=k;renderList()});
 });
 function filtered(){
-  const q=q_text.value.trim().toLowerCase(),st=q_status.value,sv=q_store.value,mv=q_method.value;
+  const q=q_text.value.trim().toLowerCase(),st=q_status.value,sv=q_store.value,mv=q_method.value,rm=q_rmonth.value;
   return cases.filter(c=>{
+    if(rm && reportMonth(c)!==rm)return false;
     if(st && c.status!==st)return false;
     if(sv && c.store!==sv)return false;
     if(mv && c.method!==mv)return false;
@@ -702,13 +719,14 @@ function renderListStats(){
 }
 function renderList(){
   renderListStats();
+  refreshMonthSelect();
   const rows=filtered();
-  if(!rows.length){caseBody.innerHTML=`<tr><td colspan="11"><div class="empty">尚無符合的案件</div></td></tr>`;return}
+  if(!rows.length){caseBody.innerHTML=`<tr><td colspan="12"><div class="empty">尚無符合的案件</div></td></tr>`;return}
   const isAdmin=role==="admin";
   caseBody.innerHTML=rows.map(c=>{
     const idx=cases.indexOf(c);
     return `<tr>
-      <td><b>${esc(c.caseNo)}</b></td><td>${esc(c.date)}</td><td>${esc(c.store)}</td>
+      <td><b>${esc(c.caseNo)}</b></td><td>${esc(c.date)}</td><td>${esc(reportYmd(c)||"—")}</td><td>${esc(c.store)}</td>
       <td>${esc(c.name)}</td><td>${esc(c.qty)}</td>
       <td style="max-width:180px">${esc(c.desc)}</td>
       <td>${c.media.length?`📎${c.media.length}`:"—"}</td>
@@ -960,8 +978,8 @@ resetDash.addEventListener("click",()=>{d_from.value="";d_to.value="";renderDash
 
 /* ====== 匯出 CSV ====== */
 exportBtn.addEventListener("click",()=>{
-  const head=["案件編號","日期","門市","料號","品名","製造日期","有效日期","異常數量","異常分類","異常狀況","異常品處理","處理方式","處理結果","狀態","附件數"];
-  const rows=filtered().map(c=>[c.caseNo,c.date,c.store,c.mat,c.name,c.mfg,c.exp,c.qty,c.cls,c.desc,c.handle,c.method,c.result,c.status==="done"?"已處理":"待處理",c.media.length]);
+  const head=["案件編號","異常日期","回報日期","門市","料號","品名","製造日期","有效日期","異常數量","異常分類","異常狀況","異常品處理","處理方式","處理結果","狀態","附件數"];
+  const rows=filtered().map(c=>[c.caseNo,c.date,reportYmd(c),c.store,c.mat,c.name,c.mfg,c.exp,c.qty,c.cls,c.desc,c.handle,c.method,c.result,c.status==="done"?"已處理":"待處理",c.media.length]);
   const csv="﻿"+[head,...rows].map(r=>r.map(x=>`"${String(x||"").replace(/"/g,'""')}"`).join(",")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
   a.download="門市異常_"+today()+".csv";a.click();
