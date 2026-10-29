@@ -691,8 +691,9 @@ function refreshMonthSelect(){
 document.querySelectorAll("#caseTable th[data-sort]").forEach(th=>{
   th.addEventListener("click",()=>{const k=th.dataset.sort;sortDir=(sortKey===k)?-sortDir:1;sortKey=k;renderList()});
 });
-function filtered(){
-  const q=q_text.value.trim().toLowerCase(),st=q_status.value,sv=q_store.value,mv=q_method.value,rm=q_rmonth.value;
+/* skipStatus=true：套用其餘篩選但不看「狀態」（給上方統計用，否則選了待處理其他格都變 0） */
+function filtered(skipStatus){
+  const q=q_text.value.trim().toLowerCase(),st=skipStatus?"":q_status.value,sv=q_store.value,mv=q_method.value,rm=q_rmonth.value;
   return cases.filter(c=>{
     if(rm && reportMonth(c)!==rm)return false;
     if(st && c.status!==st)return false;
@@ -704,22 +705,24 @@ function filtered(){
     let x=a[sortKey]||"",y=b[sortKey]||"";return x<y?-sortDir:x>y?sortDir:0;
   });
 }
-/* 案件清單上方的統計摘要（全部案件） */
+/* 案件清單上方的統計摘要：跟著下方篩選（回報月份／門市／處理方式／搜尋）連動 */
 function renderListStats(){
   const el=document.getElementById("listStats"); if(!el)return;
-  const d=cases;
+  const d=filtered(true);
+  const rm=q_rmonth.value, scope=rm?(+rm.slice(0,4))+" 年 "+(+rm.slice(5,7))+" 月":"";
+  const lab=scope?scope+"案件":"總案件";
   const pend=d.filter(c=>c.status==="pend").length;
   const doing=d.filter(c=>c.status==="doing").length;
   const done=d.filter(c=>c.status==="done").length;
   el.innerHTML=`
-    <div class="stat"><div class="n">${d.length}</div><div class="l">總案件</div></div>
+    <div class="stat"><div class="n">${d.length}</div><div class="l">${lab}</div></div>
     <div class="stat warn"><div class="n">${pend}</div><div class="l">待處理</div></div>
     <div class="stat info"><div class="n">${doing}</div><div class="l">處理中</div></div>
     <div class="stat ok"><div class="n">${done}</div><div class="l">已處理</div></div>`;
 }
 function renderList(){
-  renderListStats();
   refreshMonthSelect();
+  renderListStats();
   const rows=filtered();
   if(!rows.length){caseBody.innerHTML=`<tr><td colspan="12"><div class="empty">尚無符合的案件</div></td></tr>`;return}
   const isAdmin=role==="admin";
