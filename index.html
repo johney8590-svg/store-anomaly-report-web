@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>門市物料異常回報系統</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --primary:#2c6e49; --primary-dark:#1e4d33; --accent:#d68c45;
@@ -67,6 +68,13 @@
   th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
   th{background:#f0f4f2;color:#3a463f;font-weight:700;position:sticky;top:0;cursor:pointer;white-space:nowrap}
   tr:hover td{background:#f8faf9}
+  .batch-bar{display:none;flex-wrap:wrap;gap:10px;align-items:flex-end;background:#eef6f0;border:1px solid #cfe3d6;border-radius:12px;padding:12px 14px;margin-bottom:12px}
+  .batch-bar.show{display:flex}
+  .batch-bar>div{flex:1;min-width:150px}
+  .batch-bar .cnt{flex:0 0 100%;font-weight:700;color:#1e6e44;font-size:13px}
+  .batch-bar textarea{min-height:42px}
+  #caseTable td.ck,#caseTable th.ck{width:34px;text-align:center}
+  #caseTable input[type=checkbox]{width:17px;height:17px;cursor:pointer}
   .tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
   .tag.pend{background:#fdf0d5;color:#9a6700}
   .tag.doing{background:#dbe7ff;color:#1e50a2}
@@ -289,11 +297,20 @@
         <div><label>狀態</label><select id="q_status"><option value="">全部</option><option value="pend">待處理</option><option value="doing">處理中</option><option value="done">已處理</option></select></div>
         <div><label>門市</label><select id="q_store"><option value="">全部門市</option></select></div>
         <div><label>處理方式</label><select id="q_method"><option value="">全部</option></select></div>
-        <div style="flex:0"><button class="btn sec sm" id="exportBtn" style="margin-bottom:1px">匯出 CSV</button></div>
+        <div style="flex:0"><button class="btn sec sm" id="exportBtn" style="margin-bottom:1px;white-space:nowrap">匯出 Excel</button></div>
+      </div>
+      <div class="batch-bar" id="batchBar">
+        <div class="cnt" id="batchCnt">已勾選 0 件</div>
+        <div><label>異常品處理</label><select id="b_handle"></select></div>
+        <div><label>處理方式</label><select id="b_method"></select></div>
+        <div style="flex:2;min-width:220px"><label>處理結果（回覆）</label><textarea id="b_result" placeholder="留空＝不變更；填寫會套用到所有勾選案件"></textarea>
+          <label style="font-weight:400;font-size:12px;margin-top:4px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="b_append" style="width:auto"> 接在原有結果後面（不覆蓋）</label></div>
+        <div style="flex:0;display:flex;gap:8px"><button class="btn sm" id="batchApply" style="white-space:nowrap">套用到勾選案件</button><button class="btn ghost sm" id="batchClear" style="white-space:nowrap">取消勾選</button></div>
       </div>
       <div class="scrollwrap">
         <table id="caseTable">
           <thead><tr>
+            <th class="ck admin-only"><input type="checkbox" id="ckAll" title="全選目前篩選結果"></th>
             <th data-sort="caseNo">案件編號</th><th data-sort="date">異常日期</th><th data-sort="createdAt">回報日期</th>
             <th data-sort="store">門市</th><th data-sort="name">品名</th>
             <th data-sort="qty">數量</th><th>狀況</th><th>媒體</th>
@@ -671,6 +688,8 @@ function notifyLine(c){
 
 /* ====== 清單 ====== */
 let sortKey="createdAt",sortDir=-1;
+const SELECTED=new Set();   // 批次處理：以案件編號記錄勾選
+const KEEP="__keep__";
 q_method.innerHTML="<option value=''>全部</option>"+METHOD_OPTS.filter(o=>o&&o!=="─").map(o=>`<option>${o}</option>`).join("");
 /* 回報日期（案件建立時間 createdAt，轉本地時區）；與「異常日期」c.date 不同 */
 function reportYmd(c){
@@ -724,11 +743,17 @@ function renderList(){
   refreshMonthSelect();
   renderListStats();
   const rows=filtered();
-  if(!rows.length){caseBody.innerHTML=`<tr><td colspan="12"><div class="empty">尚無符合的案件</div></td></tr>`;return}
   const isAdmin=role==="admin";
+  document.querySelectorAll("#caseTable .admin-only").forEach(el=>el.style.display=isAdmin?"":"none");
+  // 篩選變動後，只保留仍在畫面上的勾選
+  const vis=new Set(rows.map(c=>c.caseNo));
+  [...SELECTED].forEach(k=>{if(!vis.has(k))SELECTED.delete(k)});
+  updateBatchBar(rows);
+  if(!rows.length){caseBody.innerHTML=`<tr><td colspan="13"><div class="empty">尚無符合的案件</div></td></tr>`;return}
   caseBody.innerHTML=rows.map(c=>{
     const idx=cases.indexOf(c);
     return `<tr>
+      ${isAdmin?`<td class="ck"><input type="checkbox" class="rowck" data-k="${esc(c.caseNo)}" ${SELECTED.has(c.caseNo)?"checked":""}></td>`:""}
       <td><b>${esc(c.caseNo)}</b></td><td>${esc(c.date)}</td><td>${esc(reportYmd(c)||"—")}</td><td>${esc(c.store)}</td>
       <td>${esc(c.name)}</td><td>${esc(c.qty)}</td>
       <td style="max-width:180px">${esc(c.desc)}</td>
@@ -979,13 +1004,83 @@ function drawCharts(data){
 applyDash.addEventListener("click",renderDash);
 resetDash.addEventListener("click",()=>{d_from.value="";d_to.value="";renderDash()});
 
-/* ====== 匯出 CSV ====== */
+/* ====== 匯出 Excel（依目前篩選結果）====== */
 exportBtn.addEventListener("click",()=>{
   const head=["案件編號","異常日期","回報日期","門市","料號","品名","製造日期","有效日期","異常數量","異常分類","異常狀況","異常品處理","處理方式","處理結果","狀態","附件數"];
-  const rows=filtered().map(c=>[c.caseNo,c.date,reportYmd(c),c.store,c.mat,c.name,c.mfg,c.exp,c.qty,c.cls,c.desc,c.handle,c.method,c.result,c.status==="done"?"已處理":"待處理",c.media.length]);
-  const csv="﻿"+[head,...rows].map(r=>r.map(x=>`"${String(x||"").replace(/"/g,'""')}"`).join(",")).join("\n");
-  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-  a.download="門市異常_"+today()+".csv";a.click();
+  const list=filtered();
+  if(!list.length){toast("目前篩選沒有案件可匯出");return;}
+  const rows=list.map(c=>[c.caseNo,c.date,reportYmd(c),c.store,c.mat,c.name,c.mfg,c.exp,c.qty,c.cls,c.desc,c.handle,c.method,c.result,statusText(c.status),(c.media||[]).length]);
+  // 檔名帶上篩選條件，方便辨識
+  const tag=[q_rmonth.value&&q_rmonth.value.replace("-","年")+"月",q_store.value,q_status.value&&statusText(q_status.value),q_method.value].filter(Boolean).join("_");
+  const fname="門市物料異常_"+(tag?tag+"_":"")+today();
+  if(typeof XLSX==="undefined"){   // 套件載入失敗 → 退回 CSV（Excel 也能開）
+    const csv="\ufeff"+[head,...rows].map(r=>r.map(x=>`"${String(x==null?"":x).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+    a.download=fname+".csv";a.click();toast("Excel 元件未載入，已改匯出 CSV");return;
+  }
+  const ws=XLSX.utils.aoa_to_sheet([head,...rows]);
+  ws["!cols"]=[16,11,11,12,12,18,11,11,9,11,30,12,12,30,8,7].map(w=>({wch:w}));
+  ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length,c:head.length-1}})};
+  ws["!freeze"]={xSplit:0,ySplit:1};
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"案件清單");
+  const buf=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+  a.download=fname+".xlsx";document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+  toast("已匯出 "+rows.length+" 筆");
+});
+
+/* ====== 批次處理（管理）====== */
+b_handle.innerHTML=`<option value="${KEEP}">— 不變更 —</option>`+HANDLE_OPTS.filter(o=>o&&o!=="─").map(o=>`<option>${o}</option>`).join("");
+b_method.innerHTML=`<option value="${KEEP}">— 不變更 —</option>`+METHOD_OPTS.filter(o=>o&&o!=="─").map(o=>`<option>${o}</option>`).join("");
+function updateBatchBar(rows){
+  rows=rows||filtered();
+  const n=SELECTED.size, isAdmin=role==="admin";
+  batchBar.classList.toggle("show",isAdmin&&n>0);
+  batchCnt.textContent="已勾選 "+n+" 件 — 只會更新下方有填／有選的欄位，其餘維持原樣";
+  ckAll.checked=rows.length>0&&rows.every(c=>SELECTED.has(c.caseNo));
+  ckAll.indeterminate=n>0&&!ckAll.checked;
+}
+caseBody.addEventListener("change",e=>{
+  const t=e.target; if(!t.classList.contains("rowck"))return;
+  t.checked?SELECTED.add(t.dataset.k):SELECTED.delete(t.dataset.k);
+  updateBatchBar();
+});
+ckAll.addEventListener("change",()=>{
+  const rows=filtered();
+  if(ckAll.checked)rows.forEach(c=>SELECTED.add(c.caseNo)); else rows.forEach(c=>SELECTED.delete(c.caseNo));
+  renderList();
+});
+batchClear.addEventListener("click",()=>{SELECTED.clear();renderList();});
+batchApply.addEventListener("click",async()=>{
+  const h=b_handle.value,m=b_method.value,r=b_result.value.trim(),app=b_append.checked;
+  if(h===KEEP&&m===KEEP&&!r){toast("請至少選擇或填寫一個要套用的欄位");return;}
+  const list=cases.filter(c=>SELECTED.has(c.caseNo));
+  if(!list.length){toast("沒有勾選案件");return;}
+  const desc=[h!==KEEP&&"異常品處理＝"+h,m!==KEEP&&"處理方式＝"+m,r&&("處理結果"+(app?"（附加）":"")+"＝"+r)].filter(Boolean).join("\n");
+  if(!confirm("確定套用到 "+list.length+" 件案件？\n\n"+desc))return;
+  batchApply.disabled=true;
+  let ok=0,fail=[];
+  for(let i=0;i<list.length;i++){
+    const c=list[i];
+    batchApply.textContent="處理中 "+(i+1)+"/"+list.length;
+    const prev={handle:c.handle,method:c.method,result:c.result,status:c.status};
+    if(h!==KEEP)c.handle=h;
+    if(m!==KEEP)c.method=m;
+    if(r)c.result=(app&&c.result)?(c.result+"\n"+r):r;
+    c.status=(c.handle&&c.method&&c.result)?"done":(c.handle||c.method||c.result)?"doing":"pend";
+    if(API_URL){
+      try{ await api("update",{caseNo:c.caseNo,name:c.name,mat:c.mat,qty:c.qty,cls:c.cls,mfg:c.mfg,exp:c.exp,
+        handle:c.handle,method:c.method,result:c.result,status:c.status}); ok++; }
+      catch(e){ Object.assign(c,prev); fail.push(c.caseNo); }   // 雲端失敗 → 還原，避免畫面與雲端不一致
+    }else ok++;
+  }
+  save(); batchApply.disabled=false; batchApply.textContent="套用到勾選案件";
+  SELECTED.clear(); fail.forEach(k=>SELECTED.add(k));   // 失敗的保留勾選方便重試
+  if(!fail.length){b_handle.value=KEEP;b_method.value=KEEP;b_result.value="";b_append.checked=false;}
+  refreshAll();
+  toast(fail.length?("完成 "+ok+" 件，失敗 "+fail.length+" 件（仍保持勾選，可再按一次重試）"):("已批次更新 "+ok+" 件"));
 });
 
 /* ====== LINE 設定 ====== */
