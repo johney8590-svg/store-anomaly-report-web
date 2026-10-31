@@ -268,7 +268,7 @@
       </div>
 
       <div class="full" style="margin-top:14px">
-        <label>照片 / 影片（可多張，支援拍照與錄影）</label>
+        <label>照片 / 影片 <span class="req">*</span>（至少 1 個，可多張，支援拍照與錄影）</label>
         <div class="uploader" id="dropZone">點此或拖曳上傳照片、影片　📷🎥<br><span style="font-size:11px">支援 jpg/png/mp4/mov，建議單檔 &lt; 15MB</span></div>
         <input type="file" id="f_media" accept="image/*,video/*" multiple hidden>
         <div class="media-grid" id="mediaPreview"></div>
@@ -610,6 +610,12 @@ submitBtn.addEventListener("click",async ()=>{
   }
   if(f_mfg.value && f_exp.value && f_exp.value < f_mfg.value){
     toast("有效日期不可早於製造日期");return;
+  }
+  if(!media.length){
+    toast("請至少上傳 1 張照片或 1 段影片");
+    dropZone.scrollIntoView({behavior:"smooth",block:"center"});
+    dropZone.style.borderColor="var(--danger)";setTimeout(()=>dropZone.style.borderColor="",2500);
+    return;
   }
   const caseNo=genCaseNo(f_store.value,f_date.value);
   const c={
