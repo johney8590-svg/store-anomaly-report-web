@@ -307,7 +307,9 @@
       <div class="stat-row" id="listStats" style="margin-bottom:16px"></div>
       <div class="filter-bar">
         <div><label>搜尋</label><input type="text" id="q_text" placeholder="案號 / 門市 / 品名 / 狀況"></div>
-        <div><label>回報月份</label><select id="q_rmonth"><option value="">全部月份</option></select></div>
+        <div><label>回報時間</label><select id="q_rtime"><option value="">全部時間</option></select></div>
+        <div id="q_rcustom" style="display:none;flex:1.6;min-width:240px"><label>自訂區間（回報日）</label>
+          <div style="display:flex;gap:6px;align-items:center"><input type="date" id="q_rfrom"><span>～</span><input type="date" id="q_rto"></div></div>
         <div><label>狀態</label><select id="q_status"><option value="">全部</option><option value="pend">待處理</option><option value="doing">處理中</option><option value="supp">待補件</option><option value="done">已處理</option></select></div>
         <div><label>門市</label><select id="q_store"><option value="">全部門市</option></select></div>
         <div><label>處理方式</label><select id="q_method"><option value="">全部</option></select></div>
@@ -718,23 +720,60 @@ function reportYmd(c){
   return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 }
 function reportMonth(c){return reportYmd(c).slice(0,7)}
+/* ── 回報時間篩選：快速區間（本週／上週／本月／上月…）＋各月份＋自訂區間 ── */
+function ymdLocal(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x;}
+function quickRange(key){
+  const t=new Date();t.setHours(0,0,0,0);
+  const mon=addDays(t,-((t.getDay()+6)%7));               // 本週一（週一為一週開始）
+  const m0=new Date(t.getFullYear(),t.getMonth(),1);
+  switch(key){
+    case "today":  return {from:ymdLocal(t),to:ymdLocal(t),label:"今天"};
+    case "yday":   return {from:ymdLocal(addDays(t,-1)),to:ymdLocal(addDays(t,-1)),label:"昨天"};
+    case "week":   return {from:ymdLocal(mon),to:ymdLocal(addDays(mon,6)),label:"本週"};
+    case "lweek":  return {from:ymdLocal(addDays(mon,-7)),to:ymdLocal(addDays(mon,-1)),label:"上週"};
+    case "month":  return {from:ymdLocal(m0),to:ymdLocal(new Date(t.getFullYear(),t.getMonth()+1,0)),label:"本月"};
+    case "lmonth": return {from:ymdLocal(new Date(t.getFullYear(),t.getMonth()-1,1)),to:ymdLocal(new Date(t.getFullYear(),t.getMonth(),0)),label:"上月"};
+    case "d7":     return {from:ymdLocal(addDays(t,-6)),to:ymdLocal(t),label:"近 7 天"};
+    case "d30":    return {from:ymdLocal(addDays(t,-29)),to:ymdLocal(t),label:"近 30 天"};
+  }
+  return null;
+}
+/* 目前選取的回報時間區間：{from,to,label}；全部時間＝null */
+function reportRange(){
+  const v=q_rtime.value;
+  if(!v)return null;
+  if(v==="custom"){
+    const f=q_rfrom.value,t=q_rto.value; if(!f&&!t)return null;
+    return {from:f||"0000-00-00",to:t||"9999-12-31",label:(f||"…")+"～"+(t||"…")};
+  }
+  if(/^m:\d{4}-\d{2}$/.test(v)){const m=v.slice(2),[y,mo]=m.split("-");return {from:m+"-01",to:m+"-31",label:y+" 年 "+(+mo)+" 月"};}
+  return quickRange(v);
+}
 /* 依現有案件重建回報月份下拉（新到舊），保留目前選取 */
 function refreshMonthSelect(){
-  const cur=q_rmonth.value;
+  const cur=q_rtime.value;
   const ms=[...new Set(cases.map(reportMonth).filter(Boolean))].sort().reverse();
-  if(cur&&ms.indexOf(cur)<0)ms.unshift(cur);
-  q_rmonth.innerHTML="<option value=''>全部月份</option>"+ms.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}">${y} 年 ${+mo} 月</option>`}).join("");
-  q_rmonth.value=cur;
+  q_rtime.innerHTML=`<option value="">全部時間</option>
+    <optgroup label="快速篩選"><option value="today">今天</option><option value="yday">昨天</option>
+      <option value="week">本週</option><option value="lweek">上週</option>
+      <option value="month">本月</option><option value="lmonth">上月</option>
+      <option value="d7">近 7 天</option><option value="d30">近 30 天</option></optgroup>
+    <optgroup label="依月份">${ms.map(m=>{const[y,mo]=m.split("-");return `<option value="m:${m}">${y} 年 ${+mo} 月</option>`}).join("")}</optgroup>
+    <option value="custom">自訂區間…</option>`;
+  q_rtime.value=cur||"";
+  if(q_rtime.value!==cur)q_rtime.value="";
+  q_rcustom.style.display=q_rtime.value==="custom"?"":"none";
 }
-[q_text,q_status,q_store,q_method,q_rmonth].forEach(el=>el.addEventListener("input",renderList));
+[q_text,q_status,q_store,q_method,q_rtime,q_rfrom,q_rto].forEach(el=>el.addEventListener("input",renderList));
 document.querySelectorAll("#caseTable th[data-sort]").forEach(th=>{
   th.addEventListener("click",()=>{const k=th.dataset.sort;sortDir=(sortKey===k)?-sortDir:1;sortKey=k;renderList()});
 });
 /* skipStatus=true：套用其餘篩選但不看「狀態」（給上方統計用，否則選了待處理其他格都變 0） */
 function filtered(skipStatus){
-  const q=q_text.value.trim().toLowerCase(),st=skipStatus?"":q_status.value,sv=q_store.value,mv=q_method.value,rm=q_rmonth.value;
+  const q=q_text.value.trim().toLowerCase(),st=skipStatus?"":q_status.value,sv=q_store.value,mv=q_method.value,rr=reportRange();
   return cases.filter(c=>{
-    if(rm && reportMonth(c)!==rm)return false;
+    if(rr){const d=reportYmd(c); if(!d||d<rr.from||d>rr.to)return false;}
     if(st && c.status!==st)return false;
     if(sv && c.store!==sv)return false;
     if(mv && c.method!==mv)return false;
@@ -744,12 +783,11 @@ function filtered(skipStatus){
     let x=a[sortKey]||"",y=b[sortKey]||"";return x<y?-sortDir:x>y?sortDir:0;
   });
 }
-/* 案件清單上方的統計摘要：跟著下方篩選（回報月份／門市／處理方式／搜尋）連動 */
+/* 案件清單上方的統計摘要：跟著下方篩選（回報時間／門市／處理方式／搜尋）連動 */
 function renderListStats(){
   const el=document.getElementById("listStats"); if(!el)return;
   const d=filtered(true);
-  const rm=q_rmonth.value, scope=rm?(+rm.slice(0,4))+" 年 "+(+rm.slice(5,7))+" 月":"";
-  const lab=scope?scope+"案件":"總案件";
+  const rr=reportRange(), lab=rr?rr.label+"案件":"總案件";
   const pend=d.filter(c=>c.status==="pend").length;
   const doing=d.filter(c=>c.status==="doing").length;
   const done=d.filter(c=>c.status==="done").length;
@@ -1036,7 +1074,8 @@ const EXPORT_W=[16,11,11,12,12,18,11,11,9,11,30,12,12,30,8,7];
 const PICS_PER_ROW=3, PIC_PX=80;          // 每列最多放 3 張縮圖，每張 80px
 function exportRows(list){return list.map(c=>[c.caseNo,c.date,reportYmd(c),c.store,c.mat,c.name,c.mfg,c.exp,c.qty,c.cls,c.desc,c.handle,c.method,c.result,statusText(c.status),(c.media||[]).length]);}
 function exportName(){
-  const tag=[q_rmonth.value&&q_rmonth.value.replace("-","年")+"月",q_store.value,q_status.value&&statusText(q_status.value),q_method.value].filter(Boolean).join("_");
+  const rr=reportRange();
+  const tag=[rr&&(rr.from===rr.to?rr.from:(rr.from.replace("0000-00-00","")+"至"+rr.to.replace("9999-12-31",""))),q_store.value,q_status.value&&statusText(q_status.value),q_method.value].filter(Boolean).join("_");
   return "門市物料異常_"+(tag?tag+"_":"")+today();
 }
 function downloadBlob(blob,name){
