@@ -353,7 +353,7 @@ function doPost(e) {
     if (Array.isArray(body.events)) { handleWebhook_(body.events); return json_({ ok: true }); }
     if (body.token !== CONFIG.API_TOKEN) return json_({ ok: false, error: '未授權' });
     // 管理權限動作：需要正確的管理密碼（門市夥伴只能 create / 讀品名主檔）
-    const adminActions = ['requestSupp', 'cancelSupp', 'list', 'update', 'delete', 'pushTest', 'saveLine', 'saveProducts', 'saveStores', 'diagLine', 'capturedIds', 'repairCaseNos', 'setCapture'];
+    const adminActions = ['thumbs', 'requestSupp', 'cancelSupp', 'list', 'update', 'delete', 'pushTest', 'saveLine', 'saveProducts', 'saveStores', 'diagLine', 'capturedIds', 'repairCaseNos', 'setCapture'];
     if (adminActions.indexOf(body.action) >= 0 && body.adminPass !== CONFIG.ADMIN_PASSWORD) {
       return json_({ ok: false, error: '管理密碼錯誤' });
     }
@@ -374,6 +374,7 @@ function doPost(e) {
       case 'capturedIds':  return json_({ ok: true, data: getCapturedIds_() });        // 查詢 webhook 擷取到的 group/user ID
       case 'repairCaseNos':return json_({ ok: true, data: repairCaseNos_() });          // 一鍵修復歷史重複案號
       case 'setCapture':   return json_({ ok: true, data: setCapture_(body) });          // 開/關 webhook 擷取 ID 模式
+      case 'thumbs':       return json_({ ok: true, data: thumbs_(body) });        // 管理：匯出 Excel 用的附件縮圖
       // ── 補件 ──
       case 'requestSupp':  return json_({ ok: true, data: requestSupp_(body) });   // 管理：要求門市補件（寄 Email）
       case 'cancelSupp':   return json_({ ok: true, data: cancelSupp_(body) });    // 管理：取消補件要求
@@ -1005,4 +1006,27 @@ function forceAuthMail() {
   const me = DEFAULT_SUP_EMAILS['呂韋興 Robert'];   // 測試信收件人（可改成自己的信箱）
   MailApp.sendEmail(me, 'UG 物料異常回報系統｜Email 授權測試', '收到這封信代表補件 Email 功能已授權完成。');
   Logger.log('test mail sent to ' + me);
+}
+
+// ===== 匯出 Excel 用：批次取得附件縮圖（base64，最長邊約 200px）=====
+// body.ids = [Drive 檔案 id, ...]（一次最多 30 個）；回傳 { id: 'data:image/jpeg;base64,...' }，失敗的 id 不回傳
+function thumbs_(body) {
+  const ids = (body.ids || []).map(String).filter(x => /^[\w-]{10,}$/.test(x)).slice(0, 30);
+  if (!ids.length) return {};
+  const size = Math.min(Math.max(Number(body.size) || 200, 80), 400);
+  const reqs = ids.map(id => ({ url: 'https://drive.google.com/thumbnail?id=' + id + '&sz=s' + size,
+                               headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+                               muteHttpExceptions: true, followRedirects: true }));
+  const out = {};
+  let res = [];
+  try { res = UrlFetchApp.fetchAll(reqs); } catch (e) { res = []; }
+  res.forEach((r, i) => {
+    try {
+      if (r.getResponseCode() !== 200) return;
+      const blob = r.getBlob(), type = String(blob.getContentType() || '');
+      if (type.indexOf('image/') !== 0) return;
+      out[ids[i]] = 'data:' + type + ';base64,' + Utilities.base64Encode(blob.getBytes());
+    } catch (e) {}
+  });
+  return out;
 }

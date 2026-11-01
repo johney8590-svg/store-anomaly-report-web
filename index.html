@@ -1030,31 +1030,110 @@ function drawCharts(data){
 applyDash.addEventListener("click",renderDash);
 resetDash.addEventListener("click",()=>{d_from.value="";d_to.value="";renderDash()});
 
-/* ====== 匯出 Excel（依目前篩選結果）====== */
-exportBtn.addEventListener("click",()=>{
-  const head=["案件編號","異常日期","回報日期","門市","料號","品名","製造日期","有效日期","異常數量","異常分類","異常狀況","異常品處理","處理方式","處理結果","狀態","附件數"];
+/* ====== 匯出 Excel（依目前篩選結果；含附件照片縮圖）====== */
+const EXPORT_HEAD=["案件編號","異常日期","回報日期","門市","料號","品名","製造日期","有效日期","異常數量","異常分類","異常狀況","異常品處理","處理方式","處理結果","狀態","附件數"];
+const EXPORT_W=[16,11,11,12,12,18,11,11,9,11,30,12,12,30,8,7];
+const PICS_PER_ROW=3, PIC_PX=80;          // 每列最多放 3 張縮圖，每張 80px
+function exportRows(list){return list.map(c=>[c.caseNo,c.date,reportYmd(c),c.store,c.mat,c.name,c.mfg,c.exp,c.qty,c.cls,c.desc,c.handle,c.method,c.result,statusText(c.status),(c.media||[]).length]);}
+function exportName(){
+  const tag=[q_rmonth.value&&q_rmonth.value.replace("-","年")+"月",q_store.value,q_status.value&&statusText(q_status.value),q_method.value].filter(Boolean).join("_");
+  return "門市物料異常_"+(tag?tag+"_":"")+today();
+}
+function downloadBlob(blob,name){
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+}
+function loadScript(src){return new Promise((ok,no)=>{const sc=document.createElement("script");sc.src=src;sc.onload=ok;sc.onerror=no;document.head.appendChild(sc);});}
+// 量圖片原始尺寸（等比縮放用）
+function imgSize(dataUrl){return new Promise(ok=>{const im=new Image();im.onload=()=>ok({w:im.naturalWidth||1,h:im.naturalHeight||1});im.onerror=()=>ok(null);im.src=dataUrl;});}
+// 向後端分批取縮圖（每批 25 個）
+async function fetchThumbs(ids,onProgress){
+  const out={};
+  for(let i=0;i<ids.length;i+=25){
+    onProgress&&onProgress(Math.min(i+25,ids.length),ids.length);
+    try{Object.assign(out,await api("thumbs",{ids:ids.slice(i,i+25),size:200}));}
+    catch(e){ if(i===0) throw e; }        // 第一批就失敗＝後端尚未支援 → 交給外層退回
+  }
+  return out;
+}
+// 舊版匯出（不含照片）：SheetJS；再不行就 CSV
+function exportPlain(list,fname,note){
+  const rows=exportRows(list);
+  if(typeof XLSX==="undefined"){
+    const csv="﻿"+[EXPORT_HEAD,...rows].map(r=>r.map(x=>`"${String(x==null?"":x).replace(/"/g,'""')}"`).join(",")).join("\n");
+    downloadBlob(new Blob([csv],{type:"text/csv"}),fname+".csv");toast("Excel 元件未載入，已改匯出 CSV");return;
+  }
+  const ws=XLSX.utils.aoa_to_sheet([EXPORT_HEAD,...rows]);
+  ws["!cols"]=EXPORT_W.map(w=>({wch:w}));
+  ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length,c:EXPORT_HEAD.length-1}})};
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"案件清單");
+  downloadBlob(new Blob([XLSX.write(wb,{bookType:"xlsx",type:"array"})],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),fname+".xlsx");
+  toast("已匯出 "+rows.length+" 筆"+(note?"（"+note+"）":""));
+}
+exportBtn.addEventListener("click",async()=>{
   const list=filtered();
   if(!list.length){toast("目前篩選沒有案件可匯出");return;}
-  const rows=list.map(c=>[c.caseNo,c.date,reportYmd(c),c.store,c.mat,c.name,c.mfg,c.exp,c.qty,c.cls,c.desc,c.handle,c.method,c.result,statusText(c.status),(c.media||[]).length]);
-  // 檔名帶上篩選條件，方便辨識
-  const tag=[q_rmonth.value&&q_rmonth.value.replace("-","年")+"月",q_store.value,q_status.value&&statusText(q_status.value),q_method.value].filter(Boolean).join("_");
-  const fname="門市物料異常_"+(tag?tag+"_":"")+today();
-  if(typeof XLSX==="undefined"){   // 套件載入失敗 → 退回 CSV（Excel 也能開）
-    const csv="\ufeff"+[head,...rows].map(r=>r.map(x=>`"${String(x==null?"":x).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-    a.download=fname+".csv";a.click();toast("Excel 元件未載入，已改匯出 CSV");return;
-  }
-  const ws=XLSX.utils.aoa_to_sheet([head,...rows]);
-  ws["!cols"]=[16,11,11,12,12,18,11,11,9,11,30,12,12,30,8,7].map(w=>({wch:w}));
-  ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length,c:head.length-1}})};
-  ws["!freeze"]={xSplit:0,ySplit:1};
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"案件清單");
-  const buf=XLSX.write(wb,{bookType:"xlsx",type:"array"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
-  a.download=fname+".xlsx";document.body.appendChild(a);a.click();
-  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
-  toast("已匯出 "+rows.length+" 筆");
+  const fname=exportName();
+  const btnTxt=exportBtn.textContent; exportBtn.disabled=true;
+  const prog=t=>{exportBtn.textContent=t;};
+  try{
+    prog("準備中…");
+    if(typeof ExcelJS==="undefined"){
+      try{await loadScript("https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js");}catch(e){}
+    }
+    if(typeof ExcelJS==="undefined"){exportPlain(list,fname,"照片元件未載入，未含照片");return;}
+
+    // 1) 收集要放進 Excel 的附件（每案前 3 個）
+    const pick=list.map(c=>(c.media||[]).slice(0,PICS_PER_ROW));
+    const need=[...new Set(pick.flat().map(m=>driveId(m)).filter(Boolean))];
+    let thumbs={}, note="";
+    if(need.length&&API_URL){
+      try{thumbs=await fetchThumbs(need,(a,b)=>prog("下載照片 "+a+"/"+b));}
+      catch(e){note="後端尚未更新，照片改以連結呈現";}
+    }
+    // 2) 建立活頁簿
+    prog("產生 Excel…");
+    const wb=new ExcelJS.Workbook(), ws=wb.addWorksheet("案件清單",{views:[{state:"frozen",ySplit:1}]});
+    const head=EXPORT_HEAD.concat(["附件照片","附件連結"]);
+    const picCol=EXPORT_HEAD.length+1, linkCol=EXPORT_HEAD.length+2;   // 1-based
+    ws.columns=head.map((h,i)=>({header:h,width:i<EXPORT_W.length?EXPORT_W[i]:(i===EXPORT_HEAD.length?PICS_PER_ROW*PIC_PX/7+2:40)}));
+    const hr=ws.getRow(1);hr.font={bold:true,color:{argb:"FFFFFFFF"}};hr.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF2C6E49"}};
+    hr.alignment={vertical:"middle",horizontal:"center"};hr.height=22;
+    ws.autoFilter={from:{row:1,column:1},to:{row:1,column:head.length}};
+    let placed=0;
+    for(let r=0;r<list.length;r++){
+      const c=list[r], row=ws.addRow(exportRows([c])[0]);
+      row.alignment={vertical:"top",wrapText:true};
+      // 附件連結（全部附件，可點開原檔）
+      const all=(c.media||[]).map((m,i)=>{const id=driveId(m);return id?("https://drive.google.com/file/d/"+id+"/view"):"";}).filter(Boolean);
+      if(all.length){
+        const cell=row.getCell(linkCol);
+        cell.value=all.length===1?{text:"開啟附件",hyperlink:all[0]}:all.map((u,i)=>(i+1)+". "+u).join("\n");
+        if(all.length===1)cell.font={color:{argb:"FF1E50A2"},underline:true};
+      }
+      // 附件照片（縮圖嵌入儲存格）
+      let x=0, hasPic=false;
+      for(const m of pick[r]){
+        const id=driveId(m), src=id?thumbs[id]:(String(m.url||"").startsWith("data:image")?m.url:"");
+        if(!src)continue;
+        const ext=(src.match(/^data:image\/(png|jpeg|jpg|gif)/)||[])[1]; if(!ext)continue;
+        const sz=await imgSize(src); if(!sz)continue;
+        const k=Math.min(PIC_PX/sz.w,PIC_PX/sz.h), w=Math.round(sz.w*k), h=Math.round(sz.h*k);
+        const imgId=wb.addImage({base64:src,extension:ext==="jpg"?"jpeg":ext});
+        // 用 EMU 偏移精準排版（1px = 9525 EMU），同一格內左右並排
+        ws.addImage(imgId,{tl:{nativeCol:picCol-1,nativeColOff:x*(PIC_PX+4)*9525,nativeRow:r+1,nativeRowOff:4*9525},ext:{width:w,height:h},editAs:"oneCell",
+          hyperlinks:id?{hyperlink:"https://drive.google.com/file/d/"+id+"/view",tooltip:"點擊開啟原始"+(m.type==="video"?"影片":"照片")}:undefined});
+        x++;hasPic=true;placed++;
+      }
+      if(hasPic)row.height=Math.max(PIC_PX*0.75+12,Math.min(all.length,6)*24);     // 列高（點）≈ 像素×0.75
+      else if(!all.length)row.getCell(picCol).value="—";
+    }
+    const buf=await wb.xlsx.writeBuffer();
+    downloadBlob(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),fname+".xlsx");
+    toast("已匯出 "+list.length+" 筆，含 "+placed+" 張照片"+(note?"（"+note+"）":""));
+  }catch(e){
+    console.error(e); exportPlain(list,fname,"含照片匯出失敗，已改匯出不含照片版本");
+  }finally{exportBtn.disabled=false;exportBtn.textContent=btnTxt;}
 });
 
 /* ====== 批次處理（管理）====== */
