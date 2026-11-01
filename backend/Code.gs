@@ -41,8 +41,30 @@ const CONFIG = {
   LINE_LINK: 'https://johney8590-svg.github.io/store-anomaly-report-web/admin.html'  // {link} 代入值＝管理入口，人員點進去可直接登入處理
 };
 
+// ⚠ 新欄位一律加在最後（舊資料列不會錯位）
 const HEADERS = ['caseNo','date','store','name','mat','mfg','exp','qty','cls','desc',
-                 'mediaUrls','handle','method','result','status','createdAt'];
+                 'mediaUrls','handle','method','result','status','createdAt',
+                 'supp','history'];
+// supp    ＝補件資料 JSON：{items, note, at, token, remindAt, remindCount, by}
+// history ＝處理歷程 JSON：[{at, act, note}]
+// status  ＝ pend 待處理 / doing 處理中 / supp 待補件 / done 已處理
+
+// ===== 補件設定 =====
+const SUPP = {
+  SITE_URL: 'https://johney8590-svg.github.io/store-anomaly-report-web/index.html', // 門市補件頁（Script Property: SITE_URL 可覆寫）
+  REMIND_DAYS: 1,                // 幾天沒補就催辦
+  AFTER_STATUS: 'doing',         // 門市補件後回到「處理中」
+  ITEMS: ['照片', '影片', '製造日期／有效日期', '批號或包裝標示照片', '異常數量', '其他說明']
+};
+// 督導 Email（預設值；會優先向「修繕進度系統」讀取最新督導信箱，讀不到才用這裡）
+const DEFAULT_SUP_EMAILS = {
+  '林雨慈 Ivory':  'ivorylin@1992sharetea.com',
+  '呂韋興 Robert': 'Robertlu@1992sharetea.com',
+  '許瑛琪 Lydia':  'lydiahsu@1992sharetea.com',
+  '劉靜蓮 Jill':   'jillianliu@1992sharetea.com',
+  '劉邦鑫 Benson': 'bensonliu@1992sharetea.com',
+  '林凱琳 Liisa':  'liisalin@1992sharetea.com'
+};
 
 // 品名主檔初始資料（料號相同者已去重，保留 UG 版本）。
 // 之後可直接在試算表的 products 分頁增刪改，前端下拉會即時同步。
@@ -331,7 +353,7 @@ function doPost(e) {
     if (Array.isArray(body.events)) { handleWebhook_(body.events); return json_({ ok: true }); }
     if (body.token !== CONFIG.API_TOKEN) return json_({ ok: false, error: '未授權' });
     // 管理權限動作：需要正確的管理密碼（門市夥伴只能 create / 讀品名主檔）
-    const adminActions = ['list', 'update', 'delete', 'pushTest', 'saveLine', 'saveProducts', 'saveStores', 'diagLine', 'capturedIds', 'repairCaseNos', 'setCapture'];
+    const adminActions = ['requestSupp', 'cancelSupp', 'list', 'update', 'delete', 'pushTest', 'saveLine', 'saveProducts', 'saveStores', 'diagLine', 'capturedIds', 'repairCaseNos', 'setCapture'];
     if (adminActions.indexOf(body.action) >= 0 && body.adminPass !== CONFIG.ADMIN_PASSWORD) {
       return json_({ ok: false, error: '管理密碼錯誤' });
     }
@@ -352,6 +374,12 @@ function doPost(e) {
       case 'capturedIds':  return json_({ ok: true, data: getCapturedIds_() });        // 查詢 webhook 擷取到的 group/user ID
       case 'repairCaseNos':return json_({ ok: true, data: repairCaseNos_() });          // 一鍵修復歷史重複案號
       case 'setCapture':   return json_({ ok: true, data: setCapture_(body) });          // 開/關 webhook 擷取 ID 模式
+      // ── 補件 ──
+      case 'requestSupp':  return json_({ ok: true, data: requestSupp_(body) });   // 管理：要求門市補件（寄 Email）
+      case 'cancelSupp':   return json_({ ok: true, data: cancelSupp_(body) });    // 管理：取消補件要求
+      case 'suppPending':  return json_({ ok: true, data: suppPending_(body) });   // 門市：本店待補件清單
+      case 'suppGet':      return json_({ ok: true, data: suppGet_(body) });       // 門市：用連結代碼讀取補件內容
+      case 'suppSubmit':   return json_({ ok: true, data: suppSubmit_(body) });    // 門市：送出補件
       default:             return json_({ ok: false, error: '未知 action：' + body.action });
     }
   } catch (err) {
@@ -417,6 +445,10 @@ function getSheet_() {
   let sh = ss.getSheetByName(CONFIG.SHEET_NAME);
   if (!sh) sh = ss.insertSheet(CONFIG.SHEET_NAME);
   if (sh.getLastRow() === 0) sh.appendRow(HEADERS);
+  else if (sh.getLastColumn() < HEADERS.length) {   // 舊表補上新欄位標題（supp / history）
+    const cur = sh.getLastColumn();
+    sh.getRange(1, cur + 1, 1, HEADERS.length - cur).setValues([HEADERS.slice(cur)]);
+  }
   // 把日期欄(date/mfg/exp)設為純文字，避免被試算表自動轉成 Date(時區位移/篩選問題)。只需做一次。
   if (props_().getProperty('DATE_COLS_TEXT') !== '1') {
     ['date', 'mfg', 'exp'].forEach(function (f) {
@@ -433,6 +465,9 @@ function rowToObj_(row) {
   ['date', 'mfg', 'exp'].forEach(function (f) { o[f] = ymdStr_(o[f]); });   // 統一輸出 yyyy-MM-dd
   try { o.media = o.mediaUrls ? JSON.parse(o.mediaUrls) : []; } catch (e) { o.media = []; }
   delete o.mediaUrls;
+  try { o.supp = o.supp ? JSON.parse(o.supp) : null; } catch (e) { o.supp = null; }
+  try { o.history = o.history ? JSON.parse(o.history) : []; } catch (e) { o.history = []; }
+  if (o.createdAt && Object.prototype.toString.call(o.createdAt) === '[object Date]') o.createdAt = o.createdAt.toISOString();
   return o;
 }
 
@@ -561,9 +596,19 @@ function updateCase_(body) {
   for (let i = 1; i < values.length; i++) {
     if (values[i][col] === body.caseNo) {
       const row = i + 1;
+      const old = rowToObj_(values[i]);
+      // 待補件中的案件：一般儲存不會把狀態蓋掉（要取消補件請用 cancelSupp）；
+      //   但處理三欄都填完＝直接結案(done)，同時讓補件連結失效
+      if (old.status === 'supp' && body.status !== undefined && body.status !== 'done' && !body.forceStatus) body.status = 'supp';
+      if (old.status === 'supp' && body.status === 'done' && old.supp) {
+        sh.getRange(row, HEADERS.indexOf('supp') + 1).setValue(JSON.stringify(Object.assign({}, old.supp, { token: '', closedAt: new Date().toISOString() })));
+      }
       editable.forEach(f => {
         if (body[f] !== undefined) sh.getRange(row, HEADERS.indexOf(f) + 1).setValue(body[f]);
       });
+      if (body.status !== undefined && body.status !== old.status) {
+        addHistory_(sh, row, old.history, '狀態 ' + statusName_(old.status) + ' → ' + statusName_(body.status), '');
+      }
       return rowToObj_(sh.getRange(row, 1, 1, HEADERS.length).getValues()[0]);
     }
   }
@@ -703,4 +748,260 @@ function pushTest_(body) {
     muteHttpExceptions: true
   });
   return { code: res.getResponseCode(), detail: res.getContentText() };
+}
+
+// ===================================================================
+// ===== 補件（管理端要求 → Email 通知門市 → 門市用連結補件 → 回到處理中）=====
+// ===================================================================
+function statusName_(s) { return ({ pend: '待處理', doing: '處理中', supp: '待補件', done: '已處理' })[s] || s || '-'; }
+function addHistory_(sh, row, hist, act, note) {
+  const h = Array.isArray(hist) ? hist.slice() : [];
+  h.push({ at: new Date().toISOString(), act: act, note: note || '' });
+  sh.getRange(row, HEADERS.indexOf('history') + 1).setValue(JSON.stringify(h.slice(-50)));
+  return h;
+}
+function findCase_(sh, caseNo) {
+  const values = sh.getDataRange().getValues();
+  const col = HEADERS.indexOf('caseNo');
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][col]) === String(caseNo)) return { row: i + 1, obj: rowToObj_(values[i]) };
+  }
+  throw new Error('找不到案件：' + caseNo);
+}
+function setField_(sh, row, f, v) { sh.getRange(row, HEADERS.indexOf(f) + 1).setValue(v); }
+function siteUrl_() { return props_().getProperty('SITE_URL') || SUPP.SITE_URL; }
+function suppLink_(c, token) { return siteUrl_() + '?supp=' + encodeURIComponent(c.caseNo) + '&t=' + encodeURIComponent(token); }
+
+// 門市 Email：讀「門店資料表_UG」的「門市Email」欄（直營、加盟都有）
+function storeEmail_(store) {
+  const cache = CacheService.getScriptCache();
+  let map = null;
+  try { map = JSON.parse(cache.get('STORE_EMAILS') || 'null'); } catch (e) { map = null; }
+  if (!map) {
+    map = {};
+    const values = masterSheet_().getDataRange().getValues();
+    let hr = -1, cStore = -1, cMail = -1;
+    for (let i = 0; i < Math.min(values.length, 12); i++) {
+      const row = values[i].map(x => String(x == null ? '' : x).replace(/\s/g, ''));
+      if (row.indexOf('門市') >= 0) {
+        hr = i; cStore = row.indexOf('門市');
+        cMail = row.indexOf('門市Email');
+        if (cMail < 0) cMail = row.map(x => /mail|信箱/i.test(x)).indexOf(true);
+        break;
+      }
+    }
+    if (hr >= 0 && cMail >= 0) {
+      for (let i = hr + 1; i < values.length; i++) {
+        const n = normStore_(values[i][cStore]); const m = String(values[i][cMail] || '').trim();
+        if (n && m.indexOf('@') > 0) map[n] = m;        // 同店兩列（直營→加盟）以後面的為準
+      }
+    }
+    try { cache.put('STORE_EMAILS', JSON.stringify(map), 21600); } catch (e) {}
+  }
+  return map[normStore_(store)] || '';
+}
+// 督導 Email：優先向修繕進度系統讀（同一份設定），失敗才用預設
+function supEmails_() {
+  const cache = CacheService.getScriptCache();
+  try { const c = cache.get('SUP_EMAILS'); if (c) return JSON.parse(c); } catch (e) {}
+  let map = Object.assign({}, DEFAULT_SUP_EMAILS);
+  try {
+    const repair = PEER_SYSTEMS.filter(p => p.name === '修繕進度系統')[0];
+    if (repair) {
+      const res = UrlFetchApp.fetch(repair.url, { method: 'post', contentType: 'application/json',
+        payload: JSON.stringify(Object.assign({ action: 'getEmails' }, repair.auth)), muteHttpExceptions: true });
+      const j = JSON.parse(res.getContentText());
+      if (j.ok && j.emails) map = Object.assign(map, j.emails);
+    }
+  } catch (e) {}
+  try { cache.put('SUP_EMAILS', JSON.stringify(map), 21600); } catch (e) {}
+  return map;
+}
+function supEmailOf_(sup) {
+  const map = supEmails_(), s = String(sup || '').trim();
+  if (!s) return '';
+  if (map[s]) return map[s];
+  const first = s.split(/\s+/)[0];
+  const k = Object.keys(map).filter(k => k.indexOf(s) >= 0 || s.indexOf(k) >= 0 || k.split(/\s+/)[0] === first)[0];
+  return k ? map[k] : '';
+}
+function esc_(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'); }
+
+// 補件通知信（首次／催辦共用）
+function sendSuppMail_(c, supp, isRemind) {
+  const to = storeEmail_(c.store);
+  if (!to) return { emailed: false, reason: '門店資料表找不到「' + c.store + '」的門市Email' };
+  const sup = supOf_(c.store);
+  const cc = supEmailOf_(sup);
+  const link = suppLink_(c, supp.token);
+  const subject = (isRemind ? '【催辦｜請盡速補件】' : '【需補件】') + c.store + '｜' + c.name + '（' + c.caseNo + '）';
+  const items = (supp.items || []).join('、') || '-';
+  const rows = [['案件編號', c.caseNo], ['門市', c.store], ['品名', c.name], ['異常日期', c.date],
+                ['異常數量', c.qty], ['狀況描述', c.desc], ['需補資料', items], ['總部說明', supp.note || '-']];
+  let h = '<div style="font-family:sans-serif;font-size:14px;line-height:1.7;color:#2c2c2c">';
+  h += '<p>' + esc_(c.store) + ' 夥伴您好：</p>';
+  h += isRemind
+    ? '<p>以下物料異常案件<b style="color:#c0392b">仍待補件</b>（已於 ' + esc_(fmtTw_(supp.at)) + ' 通知），補齊後總部才能繼續向廠商處理，請盡速完成：</p>'
+    : '<p>總部在處理以下物料異常案件時，<b>需要門市補充資料</b>，請點下方按鈕上傳：</p>';
+  h += '<table style="border-collapse:collapse">';
+  rows.forEach(r => { h += '<tr><td style="padding:2px 12px 2px 0;color:#6b6b6b;white-space:nowrap;vertical-align:top">' + esc_(r[0]) + '</td><td style="padding:2px 0' + (r[0] === '需補資料' || r[0] === '總部說明' ? ';font-weight:700;color:#9a3412' : '') + '">' + esc_(r[1]) + '</td></tr>'; });
+  h += '</table>';
+  h += '<p style="margin-top:18px"><a href="' + link + '" style="display:inline-block;background:#2c6e49;color:#fff;padding:11px 22px;border-radius:8px;text-decoration:none;font-weight:700">👉 前往補件</a></p>';
+  h += '<p style="font-size:12px;color:#888">按鈕無法點擊時，請複製此網址到瀏覽器開啟：<br>' + esc_(link) + '</p>';
+  h += '<p style="color:#999;font-size:12px;margin-top:16px">（本信由 UG 門市物料異常回報系統自動發送，請勿直接回覆）</p></div>';
+  const text = c.store + ' 夥伴您好：\n\n' + (isRemind ? '以下案件仍待補件，請盡速完成。' : '總部需要門市補充以下案件資料。') + '\n\n' +
+    rows.map(r => r[0] + '：' + r[1]).join('\n') + '\n\n前往補件：' + link;
+  const opt = { to: to, subject: subject, body: text, htmlBody: h, name: 'UG 物料異常回報系統' };
+  if (cc && cc.toLowerCase() !== to.toLowerCase()) opt.cc = cc;
+  MailApp.sendEmail(opt);
+  return { emailed: true, to: to, cc: opt.cc || '' };
+}
+function fmtTw_(iso) { try { return Utilities.formatDate(new Date(iso), 'Asia/Taipei', 'MM/dd HH:mm'); } catch (e) { return String(iso || ''); } }
+
+// 管理：要求補件
+function requestSupp_(body) {
+  const items = (body.items || []).map(String).filter(Boolean);
+  const note = String(body.note || '').trim();
+  if (!items.length && !note) throw new Error('請勾選需補的資料或填寫說明');
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = getSheet_();
+    const f = findCase_(sh, body.caseNo), c = f.obj;
+    const supp = { items: items, note: note, at: new Date().toISOString(), by: String(body.by || '管理'),
+                   token: Utilities.getUuid().replace(/-/g, '').slice(0, 20), remindAt: '', remindCount: 0,
+                   prevStatus: c.status === 'supp' ? ((c.supp && c.supp.prevStatus) || 'pend') : c.status };
+    setField_(sh, f.row, 'supp', JSON.stringify(supp));
+    setField_(sh, f.row, 'status', 'supp');
+    addHistory_(sh, f.row, c.history, '要求補件', (items.join('、') + (note ? '｜' + note : '')));
+    let mail;
+    try { mail = sendSuppMail_(c, supp, false); } catch (e) { mail = { emailed: false, reason: String(e.message || e) }; }
+    return Object.assign({ caseNo: c.caseNo, status: 'supp' }, mail,
+      { case: rowToObj_(sh.getRange(f.row, 1, 1, HEADERS.length).getValues()[0]) });
+  } finally { lock.releaseLock(); }
+}
+// 管理：取消補件（回到要求前的狀態）
+function cancelSupp_(body) {
+  const sh = getSheet_();
+  const f = findCase_(sh, body.caseNo), c = f.obj;
+  if (c.status !== 'supp') return { caseNo: c.caseNo, status: c.status };
+  const back = (c.supp && c.supp.prevStatus) || 'pend';
+  const supp = Object.assign({}, c.supp || {}, { token: '', cancelledAt: new Date().toISOString() });
+  setField_(sh, f.row, 'supp', JSON.stringify(supp));
+  setField_(sh, f.row, 'status', back);
+  addHistory_(sh, f.row, c.history, '取消補件要求', '');
+  return { caseNo: c.caseNo, status: back, case: rowToObj_(sh.getRange(f.row, 1, 1, HEADERS.length).getValues()[0]) };
+}
+// 給門市看的精簡案件資料（不含處理結果等內部欄位）
+function suppView_(c) {
+  return { caseNo: c.caseNo, store: c.store, date: c.date, name: c.name, mat: c.mat, mfg: c.mfg, exp: c.exp,
+           qty: c.qty, cls: c.cls, desc: c.desc, mediaCount: (c.media || []).length,
+           items: (c.supp && c.supp.items) || [], note: (c.supp && c.supp.note) || '', at: (c.supp && c.supp.at) || '',
+           token: (c.supp && c.supp.token) || '' };
+}
+// 門市：本店待補件
+function suppPending_(body) {
+  const key = normStore_(body.store);
+  if (!key) return [];
+  return listCases_().filter(c => c.status === 'supp' && normStore_(c.store) === key && c.supp && c.supp.token).map(suppView_);
+}
+// 門市：用連結讀取
+function suppGet_(body) {
+  const c = findCase_(getSheet_(), body.caseNo).obj;
+  if (c.status !== 'supp' || !c.supp || !c.supp.token) return { done: true, caseNo: c.caseNo, status: c.status };
+  if (String(body.t || '') !== String(c.supp.token)) throw new Error('補件連結無效或已過期');
+  return suppView_(c);
+}
+// 門市：送出補件
+function suppSubmit_(body) {
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = getSheet_();
+    const f = findCase_(sh, body.caseNo), c = f.obj;
+    if (c.status !== 'supp' || !c.supp || !c.supp.token) throw new Error('此案件目前不需要補件（可能已補過或已取消）');
+    if (String(body.t || '') !== String(c.supp.token)) throw new Error('補件連結無效或已過期');
+    const items = c.supp.items || [];
+    const fx = body.fields || {};
+    const media = body.media || [];
+    const reply = String(body.reply || '').trim();
+    // 必補項目檢查
+    if ((items.indexOf('照片') >= 0 || items.indexOf('批號或包裝標示照片') >= 0) && !media.some(m => m.type !== 'video')) throw new Error('請上傳照片');
+    if (items.indexOf('影片') >= 0 && !media.some(m => m.type === 'video')) throw new Error('請上傳影片');
+    if (items.indexOf('製造日期／有效日期') >= 0 && !(fx.mfg || fx.exp)) throw new Error('請填寫製造日期或有效日期');
+    if (items.indexOf('異常數量') >= 0 && !String(fx.qty || '').trim()) throw new Error('請填寫異常數量');
+    if (!media.length && !reply && !fx.mfg && !fx.exp && !fx.qty) throw new Error('請至少上傳附件或填寫補充說明');
+
+    const changed = [];
+    if (media.length) {
+      const up = uploadMedia_(media);
+      setField_(sh, f.row, 'mediaUrls', JSON.stringify((c.media || []).concat(up)));
+      changed.push('附件 +' + up.length);
+    }
+    ['mfg', 'exp', 'qty'].forEach(k => {
+      const v = String(fx[k] || '').trim();
+      if (v && v !== String(c[k] || '')) { setField_(sh, f.row, k, v); changed.push(({ mfg: '製造日期', exp: '有效日期', qty: '數量' })[k] + '：' + v); }
+    });
+    if (reply) {
+      setField_(sh, f.row, 'desc', (c.desc ? c.desc + '\n' : '') + '【門市補件 ' + fmtTw_(new Date().toISOString()) + '】' + reply);
+      changed.push('說明：' + reply);
+    }
+    const supp = Object.assign({}, c.supp, { token: '', doneAt: new Date().toISOString(), reply: reply });
+    setField_(sh, f.row, 'supp', JSON.stringify(supp));
+    setField_(sh, f.row, 'status', SUPP.AFTER_STATUS);
+    addHistory_(sh, f.row, c.history, '門市已補件', changed.join('；'));
+    // 通知管理群組（LINE）＋督導（Email）
+    const text = '🔁【門市已補件】\n案件編號：' + c.caseNo + '\n門市：' + c.store + '\n品名：' + c.name +
+      '\n補件內容：' + (changed.join('；') || '-') + '\n狀態：待補件 → ' + statusName_(SUPP.AFTER_STATUS) + '\n連結：' + CONFIG.LINE_LINK;
+    try { pushText_(text); } catch (e) {}
+    try {
+      const sm = supEmailOf_(supOf_(c.store));
+      if (sm) MailApp.sendEmail({ to: sm, subject: '【已補件】' + c.store + '｜' + c.name + '（' + c.caseNo + '）', body: text, name: 'UG 物料異常回報系統' });
+    } catch (e) {}
+    return { ok: true, caseNo: c.caseNo, status: SUPP.AFTER_STATUS };
+  } finally { lock.releaseLock(); }
+}
+// 純文字推播到既有 LINE 目標（同新案通知的對象）
+function pushText_(text) {
+  const line = lineCfg_();
+  if (!line.token) return;
+  const msgs = [{ type: 'text', text: text }];
+  const targets = String(line.to || '').split(',').map(x => x.trim()).filter(Boolean);
+  const call = (url, payload) => UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + line.token }, payload: JSON.stringify(payload), muteHttpExceptions: true });
+  if (!targets.length) call('https://api.line.me/v2/bot/message/broadcast', { messages: msgs });
+  else targets.forEach(id => call('https://api.line.me/v2/bot/message/push', { to: id, messages: msgs }));
+}
+
+// ===== 每日催辦（觸發條件：執行一次 installSuppTrigger 即自動每天早上 9 點跑）=====
+function dailySuppReminder() {
+  const sh = getSheet_();
+  const values = sh.getDataRange().getValues();
+  const now = Date.now(), gap = SUPP.REMIND_DAYS * 24 * 3600 * 1000 - 30 * 60 * 1000;   // 容許 30 分鐘誤差
+  let sent = 0, overdue = [];
+  for (let i = 1; i < values.length; i++) {
+    const c = rowToObj_(values[i]);
+    if (c.status !== 'supp' || !c.supp || !c.supp.token) continue;
+    const last = new Date(c.supp.remindAt || c.supp.at).getTime();
+    if (!(now - last >= gap)) continue;
+    const supp = Object.assign({}, c.supp, { remindAt: new Date().toISOString(), remindCount: (c.supp.remindCount || 0) + 1 });
+    try { sendSuppMail_(c, supp, true); sent++; } catch (e) { Logger.log('催辦失敗 ' + c.caseNo + '：' + e); }
+    setField_(sh, i + 1, 'supp', JSON.stringify(supp));
+    addHistory_(sh, i + 1, c.history, '催辦補件（第 ' + supp.remindCount + ' 次）', '');
+    overdue.push(c.store + '｜' + c.name + '（' + c.caseNo + '，已催 ' + supp.remindCount + ' 次）');
+  }
+  if (overdue.length) {
+    try { pushText_('⏰【待補件催辦】以下案件門市尚未補件，已再次寄信通知：\n' + overdue.map(x => '・' + x).join('\n')); } catch (e) {}
+  }
+  Logger.log('催辦完成：寄出 ' + sent + ' 封');
+  return sent;
+}
+function installSuppTrigger() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'dailySuppReminder').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('dailySuppReminder').timeBased().everyDays(1).atHour(9).inTimezone('Asia/Taipei').create();
+  Logger.log('已設定每日 09:00 自動催辦');
+}
+// 首次授權寄信（在編輯器執行一次，會寄一封測試信給你自己）
+function forceAuthMail() {
+  const me = DEFAULT_SUP_EMAILS['呂韋興 Robert'];   // 測試信收件人（可改成自己的信箱）
+  MailApp.sendEmail(me, 'UG 物料異常回報系統｜Email 授權測試', '收到這封信代表補件 Email 功能已授權完成。');
+  Logger.log('test mail sent to ' + me);
 }

@@ -79,6 +79,19 @@
   .tag.pend{background:#fdf0d5;color:#9a6700}
   .tag.doing{background:#dbe7ff;color:#1e50a2}
   .tag.done{background:#d8f0e3;color:#1e6e44}
+  .tag.supp{background:#fde4d8;color:#b4451c}
+  .stat.supp .n{color:#b4451c}
+  .supp-banner{display:none;background:#fff4ec;border:1px solid #f3c7ad;border-radius:12px;padding:12px 14px;margin-bottom:14px}
+  .supp-banner.show{display:block}
+  .supp-banner b{color:#b4451c}
+  .supp-banner .it{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px dashed #f3c7ad;font-size:13px}
+  .supp-banner .it:first-of-type{border-top:none}
+  .supp-box{background:#fff4ec;border:1px solid #f3c7ad;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:13px;line-height:1.7}
+  .supp-box .need{font-weight:700;color:#b4451c}
+  .hist{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7}
+  .ck-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin:8px 0 12px}
+  .ck-grid label{display:flex;gap:8px;align-items:center;font-weight:400;margin:0}
+  .ck-grid input{width:auto}
   .stat.info .n{color:#2f6db3}
   .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
@@ -222,6 +235,7 @@
     <div class="card">
       <h2>新增異常回報</h2>
       <p class="hint">門市夥伴只需填寫上半部欄位與上傳照片／影片；標示「指定對象」的欄位由管理端處理。</p>
+      <div class="supp-banner" id="suppBanner"></div>
 
       <div class="grid">
         <div>
@@ -294,7 +308,7 @@
       <div class="filter-bar">
         <div><label>搜尋</label><input type="text" id="q_text" placeholder="案號 / 門市 / 品名 / 狀況"></div>
         <div><label>回報月份</label><select id="q_rmonth"><option value="">全部月份</option></select></div>
-        <div><label>狀態</label><select id="q_status"><option value="">全部</option><option value="pend">待處理</option><option value="doing">處理中</option><option value="done">已處理</option></select></div>
+        <div><label>狀態</label><select id="q_status"><option value="">全部</option><option value="pend">待處理</option><option value="doing">處理中</option><option value="supp">待補件</option><option value="done">已處理</option></select></div>
         <div><label>門市</label><select id="q_store"><option value="">全部門市</option></select></div>
         <div><label>處理方式</label><select id="q_method"><option value="">全部</option></select></div>
         <div style="flex:0"><button class="btn sec sm" id="exportBtn" style="margin-bottom:1px;white-space:nowrap">匯出 Excel</button></div>
@@ -743,6 +757,7 @@ function renderListStats(){
     <div class="stat"><div class="n">${d.length}</div><div class="l">${lab}</div></div>
     <div class="stat warn"><div class="n">${pend}</div><div class="l">待處理</div></div>
     <div class="stat info"><div class="n">${doing}</div><div class="l">處理中</div></div>
+    <div class="stat supp"><div class="n">${d.filter(c=>c.status==="supp").length}</div><div class="l">待補件</div></div>
     <div class="stat ok"><div class="n">${done}</div><div class="l">已處理</div></div>`;
 }
 function renderList(){
@@ -877,9 +892,13 @@ function openCase(idx){
   showModal(`<button class="close-x" onclick="closeModal()">×</button>
     <h2>${esc(c.caseNo)}　<span class="tag ${c.status}">${statusText(c.status)}</span></h2>
     <div class="btn-row" style="margin:6px 0 12px"><button class="btn sec sm" onclick="copyCaseInfo(${idx})">📋 複製案件資訊</button></div>
+    ${suppInfoHtml(c,isAdmin)}
     ${isAdmin?adminDetail:storeDetail}
     <label style="display:block;margin-top:14px">附件照片 / 影片</label>${mediaHtml}
-    ${isAdmin?`<div class="btn-row"><button class="btn" onclick="saveCase(${idx})">儲存</button><button class="btn" style="background:var(--danger)" onclick="delCase(${idx})">刪除案件</button></div>`
+    ${isAdmin?`<div class="btn-row"><button class="btn" onclick="saveCase(${idx})">儲存</button>
+      ${c.status==="supp"?`<button class="btn sec" onclick="cancelSupp(${idx})">取消補件要求</button><button class="btn sec" onclick="openSuppRequest(${idx})">修改並重寄補件通知</button>`
+        :`<button class="btn sec" onclick="openSuppRequest(${idx})">📮 要求門市補件</button>`}
+      <button class="btn" style="background:var(--danger)" onclick="delCase(${idx})">刪除案件</button></div>${historyHtml(c)}`
       :`<p class="hint" style="margin-top:10px">切換為「指定對象」角色才能編輯與處理。</p>`}`);
 }
 /* 詳情頁（管理）改品名 → 自動帶出對應料號；選「其他」可自行輸入 */
@@ -909,7 +928,7 @@ async function saveCase(idx){
   c.method=document.getElementById("m_method").value;
   c.result=document.getElementById("m_result").value;
   // 三態：全部填完=已處理；有填異常品處理/處理方式/結果任一=處理中；都沒填=待處理
-  c.status=(c.handle&&c.method&&c.result)?"done":(c.handle||c.method||c.result)?"doing":"pend";
+  c.status=calcStatus(c);
   if(API_URL){
     try{ await api("update",{caseNo:c.caseNo,name:c.name,mat:c.mat,qty:c.qty,cls:c.cls,mfg:c.mfg,exp:c.exp,
       handle:c.handle,method:c.method,result:c.result,status:c.status}); }
@@ -981,6 +1000,7 @@ function renderDash(){
     <div class="stat"><div class="n">${data.length}</div><div class="l">異常案件總數</div></div>
     <div class="stat warn"><div class="n">${pend}</div><div class="l">待處理</div></div>
     <div class="stat info"><div class="n">${doing}</div><div class="l">處理中</div></div>
+    <div class="stat supp"><div class="n">${data.filter(c=>c.status==="supp").length}</div><div class="l">待補件</div></div>
     <div class="stat ok"><div class="n">${done}</div><div class="l">已處理</div></div>
     <div class="stat"><div class="n">${new Set(data.map(c=>c.store)).size}</div><div class="l">涉及門市數</div></div>
     <div class="stat danger"><div class="n">${data.filter(c=>c.cls==="異物混入").length}</div><div class="l">異物混入</div></div>`;
@@ -1075,7 +1095,7 @@ batchApply.addEventListener("click",async()=>{
     if(h!==KEEP)c.handle=h;
     if(m!==KEEP)c.method=m;
     if(r)c.result=(app&&c.result)?(c.result+"\n"+r):r;
-    c.status=(c.handle&&c.method&&c.result)?"done":(c.handle||c.method||c.result)?"doing":"pend";
+    c.status=calcStatus(c);
     if(API_URL){
       try{ await api("update",{caseNo:c.caseNo,name:c.name,mat:c.mat,qty:c.qty,cls:c.cls,mfg:c.mfg,exp:c.exp,
         handle:c.handle,method:c.method,result:c.result,status:c.status}); ok++; }
@@ -1287,7 +1307,12 @@ dmReloadProducts.addEventListener("click",async ()=>{ await loadProducts(); dmFi
 
 /* ====== 工具 ====== */
 function esc(s){return String(s||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
-function statusText(s){return s==="done"?"已處理":s==="doing"?"處理中":"待處理";}
+function statusText(s){return s==="done"?"已處理":s==="doing"?"處理中":s==="supp"?"待補件":"待處理";}
+/* 依處理三欄推算狀態；待補件中的案件除非三欄填完（結案），否則維持待補件 */
+function calcStatus(c){
+  const st=(c.handle&&c.method&&c.result)?"done":(c.handle||c.method||c.result)?"doing":"pend";
+  return (c.status==="supp"&&st!=="done")?"supp":st;
+}
 function showModal(html){modalBox.innerHTML=html;modalBg.classList.add("show")}
 function closeModal(){modalBg.classList.remove("show")}
 modalBg.addEventListener("click",e=>{if(e.target===modalBg)closeModal()});
@@ -1302,6 +1327,142 @@ document.addEventListener("keydown",e=>{
 });
 let toastT;function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2600)}
 function refreshAll(){renderList();updateCasePreview();if(document.getElementById("view-dashboard").classList.contains("active"))renderDash()}
+
+/* ====== 補件（管理端要求 → Email 通知門市 → 門市補件 → 回到處理中）====== */
+const SUPP_ITEMS=["照片","影片","製造日期／有效日期","批號或包裝標示照片","異常數量","其他說明"];
+function fmtTw(iso){if(!iso)return"";const d=new Date(iso);if(isNaN(d))return String(iso);return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
+function suppInfoHtml(c,isAdmin){
+  const s=c.supp; if(!s)return"";
+  if(c.status==="supp"){
+    return `<div class="supp-box">📮 <b>待補件</b>（${esc(fmtTw(s.at))} 要求${s.remindCount?`，已催辦 ${s.remindCount} 次`:""}）<br>
+      需補：<span class="need">${esc((s.items||[]).join("、")||"—")}</span>${s.note?`<br>說明：${esc(s.note)}`:""}</div>`;
+  }
+  if(s.doneAt&&isAdmin) return `<div class="supp-box" style="background:#eef6f0;border-color:#cfe3d6">✅ 門市已於 ${esc(fmtTw(s.doneAt))} 補件${s.reply?`：${esc(s.reply)}`:""}</div>`;
+  return "";
+}
+function historyHtml(c){
+  const h=c.history||[]; if(!h.length)return"";
+  return `<div class="hist"><b>處理歷程</b><br>${h.slice().reverse().map(x=>`${esc(fmtTw(x.at))}　${esc(x.act)}${x.note?"｜"+esc(x.note):""}`).join("<br>")}</div>`;
+}
+/* 管理：開啟「要求補件」視窗 */
+function openSuppRequest(idx){
+  const c=cases[idx], cur=(c.status==="supp"&&c.supp)||{};
+  showModal(`<button class="close-x" onclick="closeModal()">×</button>
+    <h2>📮 要求門市補件</h2>
+    <p class="hint">${esc(c.caseNo)}｜${esc(c.store)}｜${esc(c.name)}</p>
+    <label>需要門市補什麼？</label>
+    <div class="ck-grid">${SUPP_ITEMS.map(it=>`<label><input type="checkbox" class="sp_it" value="${it}" ${(cur.items||[]).indexOf(it)>=0?"checked":""}> ${it}</label>`).join("")}</div>
+    <label>給門市的說明</label>
+    <textarea id="sp_note" placeholder="例：請拍外箱標籤與破損處特寫各一張">${esc(cur.note||"")}</textarea>
+    <div class="pill-note" style="margin-top:10px">送出後案件狀態改為「待補件」，系統會 Email 通知門市（門市Email，副本給負責督導），信中附補件連結。門市隔天還沒補，系統每天早上 9 點自動催辦。</div>
+    <div class="btn-row"><button class="btn" id="sp_send" onclick="sendSuppRequest(${idx})">送出補件通知</button><button class="btn ghost" onclick="openCase(${idx})">返回</button></div>`);
+}
+async function sendSuppRequest(idx){
+  const c=cases[idx];
+  const items=[...document.querySelectorAll(".sp_it:checked")].map(x=>x.value), note=sp_note.value.trim();
+  if(!items.length&&!note){toast("請勾選需補的資料或填寫說明");return;}
+  if(!API_URL){toast("需連線雲端後端才能寄送補件通知");return;}
+  sp_send.disabled=true;sp_send.textContent="寄送中…";
+  try{
+    const r=await api("requestSupp",{caseNo:c.caseNo,items,note,by:"管理"});
+    if(r.case)Object.assign(c,r.case); else {c.status="supp";}
+    save();refreshAll();closeModal();
+    toast(r.emailed?("已要求補件，已寄信給 "+r.to+(r.cc?"（副本 "+r.cc+"）":"")):("已改為待補件，但未寄出 Email："+(r.reason||"")));
+  }catch(e){toast("送出失敗："+e.message);sp_send.disabled=false;sp_send.textContent="送出補件通知";}
+}
+async function cancelSupp(idx){
+  const c=cases[idx];
+  if(!confirm("取消「"+c.caseNo+"」的補件要求？門市收到的補件連結會失效。"))return;
+  try{ const r=await api("cancelSupp",{caseNo:c.caseNo}); if(r.case)Object.assign(c,r.case); else c.status=r.status||"pend";
+    save();refreshAll();closeModal();toast("已取消補件要求");
+  }catch(e){toast("取消失敗："+e.message);}
+}
+
+/* 門市：選門市後顯示本店待補件 */
+let suppPendingList=[];
+async function loadSuppBanner(){
+  const el=document.getElementById("suppBanner");
+  if(!el||!API_URL||role!=="store"||!f_store.value){el&&el.classList.remove("show");return;}
+  const store=f_store.value;
+  try{
+    const list=await api("suppPending",{store});
+    if(store!==f_store.value)return;          // 期間又換了門市
+    suppPendingList=list||[];
+    if(!suppPendingList.length){el.classList.remove("show");return;}
+    el.innerHTML=`⚠ <b>本店有 ${suppPendingList.length} 件案件待補件</b>，總部需要補充資料後才能繼續處理：`+
+      suppPendingList.map((x,i)=>`<div class="it"><span>${esc(x.caseNo)}｜${esc(x.name)}<br><span style="color:#b4451c">需補：${esc((x.items||[]).join("、")||x.note||"—")}</span></span>
+        <button class="btn sm" onclick="openSuppForm('${esc(x.caseNo)}','${esc(x.token)}')">前往補件</button></div>`).join("");
+    el.classList.add("show");
+  }catch(e){el.classList.remove("show");}
+}
+f_store.addEventListener("change",loadSuppBanner);
+
+/* 門市：補件表單 */
+let suppMedia=[];
+async function openSuppForm(caseNo,token){
+  showModal(`<h2>載入補件資料中…</h2>`);
+  let v;
+  try{ v=await api("suppGet",{caseNo,t:token}); }
+  catch(e){ showModal(`<button class="close-x" onclick="closeModal()">×</button><h2>⚠ 無法開啟補件</h2><p>${esc(e.message)}</p>`); return; }
+  if(v.done){ showModal(`<button class="close-x" onclick="closeModal()">×</button><h2>✅ 此案件不需要補件</h2><p class="hint">${esc(caseNo)} 目前狀態：${esc(statusText(v.status))}（可能已補過或總部已取消）。</p>`); return; }
+  suppMedia=[];
+  const need=v.items||[], has=x=>need.indexOf(x)>=0;
+  const needPhoto=has("照片")||has("批號或包裝標示照片"), needVideo=has("影片");
+  showModal(`<button class="close-x" onclick="closeModal()">×</button>
+    <h2>📮 補件｜${esc(v.caseNo)}</h2>
+    <div class="supp-box">總部需要補：<span class="need">${esc(need.join("、")||"—")}</span>${v.note?`<br>說明：<b>${esc(v.note)}</b>`:""}</div>
+    <div class="kv">
+      <div class="k">門市</div><div>${esc(v.store)}</div>
+      <div class="k">品名</div><div>${esc(v.name)}</div>
+      <div class="k">異常日期</div><div>${esc(v.date)}</div>
+      <div class="k">異常數量</div><div>${esc(v.qty)}</div>
+      <div class="k">狀況描述</div><div style="white-space:pre-wrap">${esc(v.desc)}</div>
+    </div>
+    ${`<label style="display:block;margin-top:14px">補充照片 / 影片 ${needPhoto||needVideo?'<span class="req">*</span>':''}
+      <span style="font-weight:400;color:var(--muted)">${needPhoto&&needVideo?"（需照片及影片）":needPhoto?"（需照片）":needVideo?"（需影片）":"（選填）"}</span></label>
+      <div class="uploader" id="sp_drop">點此上傳照片、影片　📷🎥</div>
+      <input type="file" id="sp_file" accept="image/*,video/*" multiple hidden>
+      <div class="media-grid" id="sp_prev"></div>`}
+    ${has("製造日期／有效日期")?`<div class="grid" style="margin-top:12px">
+      <div><label>製造日期</label><input type="date" id="sp_mfg" value="${esc(v.mfg||"")}"></div>
+      <div><label>有效日期</label><input type="date" id="sp_exp" value="${esc(v.exp||"")}"></div></div>`:""}
+    ${has("異常數量")?`<div style="margin-top:12px"><label>異常數量 <span class="req">*</span></label><input type="text" id="sp_qty" value="${esc(v.qty||"")}"></div>`:""}
+    <div style="margin-top:12px"><label>補充說明 ${has("其他說明")?'<span class="req">*</span>':""}</label>
+      <textarea id="sp_reply" placeholder="回覆總部的說明（例：外箱標籤已拍、批號 2510A）"></textarea></div>
+    <div class="btn-row"><button class="btn" id="sp_submit">送出補件</button></div>`);
+  const drop=document.getElementById("sp_drop"), fi=document.getElementById("sp_file");
+  drop.onclick=()=>fi.click();
+  fi.onchange=e=>{[...e.target.files].forEach(file=>{
+    if(file.size>15*1024*1024){toast("檔案過大（>15MB）已略過："+file.name);return;}
+    const r=new FileReader();r.onload=ev=>{suppMedia.push({type:file.type.startsWith("video")?"video":"image",url:ev.target.result,name:file.name});renderSuppMedia()};r.readAsDataURL(file);
+  });fi.value="";};
+  document.getElementById("sp_submit").onclick=async()=>{
+    const mfg=(document.getElementById("sp_mfg")||{}).value||"", exp=(document.getElementById("sp_exp")||{}).value||"";
+    const qty=((document.getElementById("sp_qty")||{}).value||"").trim(), reply=sp_reply.value.trim();
+    if(needPhoto&&!suppMedia.some(m=>m.type!=="video")){toast("請上傳照片");return;}
+    if(needVideo&&!suppMedia.some(m=>m.type==="video")){toast("請上傳影片");return;}
+    if(has("製造日期／有效日期")&&!mfg&&!exp){toast("請填寫製造日期或有效日期");return;}
+    if(mfg&&exp&&exp<mfg){toast("有效日期不可早於製造日期");return;}
+    if(has("異常數量")&&!qty){toast("請填寫異常數量");return;}
+    if(has("其他說明")&&!reply){toast("請填寫補充說明");return;}
+    if(!suppMedia.length&&!reply&&!mfg&&!exp&&!qty){toast("請至少上傳附件或填寫補充說明");return;}
+    const btn=document.getElementById("sp_submit");btn.disabled=true;btn.textContent="送出中…";
+    try{
+      await api("suppSubmit",{caseNo:v.caseNo,t:token,reply,fields:{mfg,exp,qty},
+        media:suppMedia.map(m=>({name:m.name,type:m.type,data:m.url}))});
+      showModal(`<button class="close-x" onclick="closeModal()">×</button><h2>✅ 補件完成</h2>
+        <p>已送出 ${esc(v.caseNo)} 的補件資料，總部會繼續處理，謝謝！</p>
+        <div class="btn-row"><button class="btn" onclick="closeModal()">關閉</button></div>`);
+      try{history.replaceState(null,"",location.pathname);}catch(e){}
+      loadSuppBanner();
+    }catch(e){toast("送出失敗："+e.message);btn.disabled=false;btn.textContent="送出補件";}
+  };
+}
+function renderSuppMedia(){
+  const el=document.getElementById("sp_prev"); if(!el)return;
+  el.innerHTML=suppMedia.map((m,i)=>`<div class="media-thumb">${m.type==="video"?`<video src="${m.url}"></video><span class="play">▶</span>`:`<img src="${m.url}">`}
+    <button class="del" onclick="suppMedia.splice(${i},1);renderSuppMedia()">×</button></div>`).join("");
+}
 
 /* ====== 啟動：示範資料（首次） ====== */
 if(!cases.length){
@@ -1320,6 +1481,10 @@ if(!cases.length){
 if((location.hash||"").toLowerCase()==="#admin"){ adminPass=""; enterAdminMode(); syncFromCloud(); }
 else { enterStoreMode(); }
 loadStores();
+(function(){ // Email 補件連結：index.html?supp=案號&t=代碼
+  const q=new URLSearchParams(location.search), no=q.get("supp"), t=q.get("t");
+  if(no&&t){ if(role!=="store")enterStoreMode(); openSuppForm(no,t); }
+})();
 loadProducts();
 </script>
 </body>
