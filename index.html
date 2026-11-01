@@ -1367,7 +1367,9 @@ async function sendSuppRequest(idx){
     const r=await api("requestSupp",{caseNo:c.caseNo,items,note,by:"管理"});
     if(r.case)Object.assign(c,r.case); else {c.status="supp";}
     save();refreshAll();closeModal();
-    toast(r.emailed?("已要求補件，已寄信給 "+r.to+(r.cc?"（副本 "+r.cc+"）":"")):("已改為待補件，但未寄出 Email："+(r.reason||"")));
+    if(!r.emailed) toast("已改為待補件，但未寄出 Email："+(r.reason||""));
+    else if(r.cc) toast("已要求補件，已寄信給 "+r.to+"，副本督導 "+r.cc);
+    else toast("⚠ 已寄信給 "+r.to+"，但未副本督導："+(r.ccReason||"找不到督導信箱"));
   }catch(e){toast("送出失敗："+e.message);sp_send.disabled=false;sp_send.textContent="送出補件通知";}
 }
 async function cancelSupp(idx){

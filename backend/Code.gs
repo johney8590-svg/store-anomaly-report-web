@@ -814,7 +814,7 @@ function supEmails_() {
       if (j.ok && j.emails) map = Object.assign(map, j.emails);
     }
   } catch (e) {}
-  try { cache.put('SUP_EMAILS', JSON.stringify(map), 21600); } catch (e) {}
+  try { cache.put('SUP_EMAILS', JSON.stringify(map), 3600); } catch (e) {}   // 1 小時更新一次
   return map;
 }
 function supEmailOf_(sup) {
@@ -832,7 +832,8 @@ function sendSuppMail_(c, supp, isRemind) {
   const to = storeEmail_(c.store);
   if (!to) return { emailed: false, reason: '門店資料表找不到「' + c.store + '」的門市Email' };
   const sup = supOf_(c.store);
-  const cc = supEmailOf_(sup);
+  const cc = supEmailOf_(sup);   // 副本：該門市負責督導（督導信箱以修繕系統「督導 Email 通知」為準）
+  const ccReason = !sup ? '門市「' + c.store + '」未設定負責督導' : (!cc ? '督導「' + sup + '」未設定 Email' : '');
   const link = suppLink_(c, supp.token);
   const subject = (isRemind ? '【催辦｜請盡速補件】' : '【需補件】') + c.store + '｜' + c.name + '（' + c.caseNo + '）';
   const items = (supp.items || []).join('、') || '-';
@@ -854,7 +855,7 @@ function sendSuppMail_(c, supp, isRemind) {
   const opt = { to: to, subject: subject, body: text, htmlBody: h, name: 'UG 物料異常回報系統' };
   if (cc && cc.toLowerCase() !== to.toLowerCase()) opt.cc = cc;
   MailApp.sendEmail(opt);
-  return { emailed: true, to: to, cc: opt.cc || '' };
+  return { emailed: true, to: to, cc: opt.cc || '', sup: sup, ccReason: ccReason };
 }
 function fmtTw_(iso) { try { return Utilities.formatDate(new Date(iso), 'Asia/Taipei', 'MM/dd HH:mm'); } catch (e) { return String(iso || ''); } }
 
